@@ -71,6 +71,7 @@ class RunChatbot:
         self,
         model_type: str,
         api_key: Optional[str] = None,
+        #是否使用rag
         use_rag: bool = False,
         data_task: Optional[str] = None,        # "file", "url", "github_repo", "github_issues", "research_papers". this refers to the specific task for rag
         data_value: Optional[str] = None,       # Path, URL, etc.   This
@@ -96,7 +97,7 @@ class RunChatbot:
         :param model_type:         "openai", "huggingface", or "llama"
         :param api_key:            For OpenAI or private HuggingFace
         :param use_rag:            If True, set up a vector store and do retrieval.
-        :param data_task:          One of ["file", "url", "github_repo", "github_issues", "research_papers"] or None
+        :param data_task:          One of ["file", "url", "github_repo", "github_issues", "research_papers"] or None  file
         :param data_value:         The data source path/URL/etc. you want to process.
         :param vector_store_type:  "pinecone" or "chroma"
         :param embedding_type:     "openai", "huggingface", "ollama"  (Used if use_rag=True)

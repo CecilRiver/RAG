@@ -78,7 +78,7 @@ db = mongo_client["rag"]  # 使用数据库 rag
 chats_collection = db["history"]  # 使用集合 history
 
 # Streamlit 应用标题
-st.title("RAG For Extraction")
+st.title("RAG For Extraction by zkg")
 
 # 初始化聊天机器人
 if "chatbot" not in st.session_state:
@@ -203,7 +203,7 @@ st.sidebar.markdown("""
     margin-bottom: 15px;
     border: 1px solid #dcdcdc;">
     <h2 style="color: white; font-family: 'Arial', sans-serif; margin: 0;">
-        <strong>CustomGPT</strong>! 🚀
+        <strong>Choices</strong> 
     </h2>
 </div>
 """, unsafe_allow_html=True)
@@ -267,7 +267,7 @@ def initialize_chatbot(
         
         # 使用初始的基于 RunChatbot 的框架
         from src.run_rag_pipeline import RunChatbot
-                
+       # LangChain的聊天机器人构建        
        # """初始化或重新初始化聊天机器人实例。"""
         st.session_state.chatbot = RunChatbot(
             model_type=model_type,
