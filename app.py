@@ -289,6 +289,7 @@ def initialize_chatbot(
             model_path=llama_model_path,
             model_name=huggingface_model,
         )
+        # 分割文本块
         st.session_state.chatbot.setup_data()
         st.session_state.chatbot.setup_vector_store()
         st.session_state.chatbot.setup_llm_pipeline()

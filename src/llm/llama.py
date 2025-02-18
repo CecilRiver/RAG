@@ -187,7 +187,7 @@ class LlamaChatbot:
         if prompt_template is None:
             prompt = hub.pull("hwchase17/multi-query-retriever")
             
-        self.create_retrieval_qa_chain(retriever, chain_type, prompt_template = prompt)
+        self.create_retrieval_qa_chain(retriever, chain_type, prompt_template = prompt_template)
         result = self.conversation_chain({"question": query})
         return result["answer"]
 
@@ -203,8 +203,10 @@ class LlamaChatbot:
         """
         if prompt_template is None:
             prompt = hub.pull("hwchase17/multi-query-retriever")
-            
-        self.create_retrieval_qa_chain(retriever, chain_type, prompt_template = prompt)
+        
+        print(prompt)
+
+        self.create_retrieval_qa_chain(retriever, chain_type, prompt_template = prompt_template)
         result = self.conversation_chain({"question": query})
         return {
             "result": result["answer"],

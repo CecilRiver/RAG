@@ -77,9 +77,9 @@ class VectorStoreManager:
         self.embeddings = None
         self.dimension = None  # We’ll set this once we embed a dummy query
         
-        # Initialize Embeddings
+        # 配置嵌入模型
         self._initialize_embeddings()
-        # Initialize Vector Store
+        # 配置向量存储
         self._initialize_vector_store()
         
     def _initialize_embeddings(self):
@@ -131,7 +131,7 @@ class VectorStoreManager:
         else:
             raise ValueError(f"Unsupported vector_store_type: {self.vector_store_type}")
         
-        # Now compute dimension by embedding a dummy query
+        # 获取嵌入模型维度
         dummy_vector = self.embeddings.embed_query("test dimension")
         self.dimension = len(dummy_vector)
         logger.info("Embeddings initialized successfully.")
@@ -148,8 +148,11 @@ class VectorStoreManager:
 
     def _initialize_chroma_vector_store(self):
         self.vector_store = Chroma(
+            # 向量存储中的集合名称
             collection_name=self.collection_name,
+            # 设置嵌入模型
             embedding_function=self.embeddings,
+            # 设置Chroma数据存储的持久化目录
             persist_directory=self.persist_directory
         )
         logger.info(f"Chroma vector store initialized with collection '{self.collection_name}' and persist directory '{self.persist_directory}'.")
@@ -295,12 +298,20 @@ class VectorStoreManager:
             search_kwargs = {}
         if "k" not in search_kwargs:
             search_kwargs["k"] = 4
-
+        """
+        "similarity":按相似度返回结果
+        "similarity_core_threshold":按相似度分数超过指定阈值的结果
+        """
         valid_search_types = ["similarity", "similarity_score_threshold", "mmr"]
         if search_type not in valid_search_types:
             raise ValueError(f"Invalid search_type. Must be one of {valid_search_types}")
 
         # We use a private attribute for the manager so Pydantic won't try to validate it.
+        """
+        定义自定义的检索器类：
+            1.这个类是动态定义的，并且只在as_retriever方法内部可用
+            2.它继承自BaseRetriever,因此与BaseRetriever接口兼容
+        """
         class CustomVectorStoreRetriever(BaseRetriever):
             search_type: str
             search_kwargs: Dict[str, Any]

@@ -47,6 +47,7 @@ class TextSplitter:
         # Additional
         self.kwargs = kwargs  # For advanced usage
         if splitter_type == "recursive":
+            # 文本分割器
             self.splitter = RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap
@@ -105,5 +106,6 @@ class TextSplitter:
         """
         logger.info(f"Loading file documents from paths: {file_paths}")
         loader = FileDocumentLoader()
+        # 加载文档
         documents = loader.load_from_files(file_paths)
         return self.split_documents(documents)

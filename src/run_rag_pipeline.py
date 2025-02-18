@@ -148,7 +148,7 @@ class RunChatbot:
         self.kwargs = kwargs  # For advanced usage
 
     # -------------------------------------------------------------------------
-    # 1) Setup Data (Validate + Split)
+    # 1) 原始文档分割
     # -------------------------------------------------------------------------
     def setup_data(self) -> None:
         """
@@ -238,7 +238,7 @@ class RunChatbot:
         logger.info(f"Total splitted docs: {len(self.docs)}")
 
     # -------------------------------------------------------------------------
-    # 2) Setup Vector Store
+    # 2) 将文档设置为向量存储并设置对应的检索器
     # -------------------------------------------------------------------------
     def setup_vector_store(self) -> None:
         """
@@ -268,10 +268,11 @@ class RunChatbot:
 
         # 2) Add docs
         if self.docs:
+            # docs是文档拆分后的结果， 现在存到向量数据库里面
             self.vector_store_manager.add_documents(documents=self.docs, clear_store=True)
             logger.info("Documents added to VectorStoreManager.")
 
-        # 3) Create a retriever
+        # 3) 将向量存储转换为兼容LangChain的BaseRetriever，允许与LLM检索链集成
         self.retriever = self.vector_store_manager.as_retriever()
         logger.info("Retriever created successfully.")
 
@@ -309,6 +310,7 @@ class RunChatbot:
     # -------------------------------------------------------------------------
     # 4) Chat / RAG
     # -------------------------------------------------------------------------
+    # 根据类的配置和输入参数，决定使用RAG模式还是普通对话模式来处理查询，并返回响应
     def chat(self, query: str, with_sources: bool = True) -> str:
         """
         Single method to get an answer. If use_rag=True, uses the retrieval
@@ -323,7 +325,10 @@ class RunChatbot:
         # If RAG is enabled, we have a chain
         if self.use_rag and self.retriever:
             if with_sources:
+                print("nihao")
                 res_with_src = self.pipeline.generate_response_with_sources(query, self.retriever)
+                print(1111111)
+                print(res_with_src)
                 # Format an output or just return dict
                 answer = res_with_src["result"]
                 sources = res_with_src["sources"]
