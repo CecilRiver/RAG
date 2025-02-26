@@ -340,10 +340,17 @@ def save_uploaded_files(uploaded_files):
 
 
 # Sidebar for RAG Input Options
+# st.sidebar.header("Additional Input Options")
+# data_icon = st.sidebar.radio(
+#     "Select Input Type",
+#     ["None", "Upload Document", "Web Link", "GitHub Repository", "Research Papers Topic", "Solve GitHub Issues"],
+#     help="Choose the type of additional input to enhance the chatbot's knowledge base.",
+# )
+
 st.sidebar.header("Additional Input Options")
 data_icon = st.sidebar.radio(
     "Select Input Type",
-    ["None", "Upload Document", "Web Link", "GitHub Repository", "Research Papers Topic", "Solve GitHub Issues"],
+    ["None", "Upload Document"],
     help="Choose the type of additional input to enhance the chatbot's knowledge base.",
 )
 
@@ -385,10 +392,18 @@ elif data_icon == "Solve GitHub Issues":
 
     
 # 侧边栏：机器学习模型
+# st.sidebar.header("Large Language Models")
+# model_category = st.sidebar.radio(
+#     "Select a Model Category:",
+#     ["OpenAI", "HuggingFace", "Ollama", "DeepSeek"],
+#     help="Choose the category of machine learning model you'd like to use.",
+# )
+
+# 侧边栏：机器学习模型
 st.sidebar.header("Large Language Models")
 model_category = st.sidebar.radio(
-    "Select a Model Category:",
-    ["OpenAI", "HuggingFace", "Ollama", "DeepSeek"],
+    "Only Ollama is currently available:",
+    ["Ollama"],
     help="Choose the category of machine learning model you'd like to use.",
 )
 
