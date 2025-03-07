@@ -138,20 +138,9 @@ class LLMPipeline:
 
 # Example usage
 if __name__ == "__main__":
-    # OpenAI pipeline
-    openai_pipeline = LLMPipeline(model_type="openai", api_key="your_openai_api_key", temperature=0.7)
-    openai_response = openai_pipeline.run("What's the capital of France?")
-    print("OpenAI Response:")
-    print(openai_response)
-
-    # Hugging Face pipeline
-    huggingface_pipeline = LLMPipeline(model_type="huggingface", model_name="gpt2", api_key="your_huggingface_api_key", device="cpu")
-    huggingface_response = huggingface_pipeline.run("What's the currency of Japan?")
-    print("Hugging Face Response:")
-    print(huggingface_response)
 
     # Llama pipeline
-    llama_pipeline = LLMPipeline(model_type="ollama", model_path="./model/llama-7b", n_ctx=512, num_threads=4)
+    llama_pipeline = LLMPipeline(model_type="ollama", model_path="deepseek-r1", n_ctx=512, num_threads=4)
     llama_response = llama_pipeline.run("What's the largest continent in the world?")
     print("Llama Response:")
     print(llama_response)
@@ -162,23 +151,23 @@ if __name__ == "__main__":
         {"user": "Can you tell me a joke?", "assistant": "Sure! Here's a joke for you: Why don't scientists trust atoms? Because they make up everything!"},
         {"user": "That's a good one! Do you know any other science jokes?", "assistant": ""}
     ]
-    chat_response = openai_pipeline.chat(messages)
+    chat_response = llama_pipeline.chat(messages)
     print("Chat Response:")
     print(chat_response)
 
     # Retrieval-augmented generation example
 
     # Assuming you have a Chroma vector store named 'vector_store'
-    retriever = vector_store.as_retriever()
+    # retriever = vector_store.as_retriever()
 
-    query = "What are the main advantages of using Python for data science?"
-    rag_response = openai_pipeline.generate_response(query, retriever)
-    print("Retrieval-Augmented Generation Response:")
-    print(rag_response)
+    # query = "What are the main advantages of using Python for data science?"
+    # rag_response = llama_pipeline.generate_response(query, retriever)
+    # print("Retrieval-Augmented Generation Response:")
+    # print(rag_response)
 
-    rag_response_with_sources = openai_pipeline.generate_response_with_sources(query, retriever)
-    print("Retrieval-Augmented Generation Response with Sources:")
-    print(rag_response_with_sources["result"])
-    print("Sources:")
-    for source in rag_response_with_sources["sources"]:
-        print(source.metadata["source"])
+    # rag_response_with_sources = llama_pipeline.generate_response_with_sources(query, retriever)
+    # print("Retrieval-Augmented Generation Response with Sources:")
+    # print(rag_response_with_sources["result"])
+    # print("Sources:")
+    # for source in rag_response_with_sources["sources"]:
+    #     print(source.metadata["source"])

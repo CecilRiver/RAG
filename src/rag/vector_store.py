@@ -40,7 +40,7 @@ class VectorStoreManager:
     """
     def __init__(
         self,
-        vector_store_type: str = "pinecone",  # Options: 'chroma', 'pinecone'
+        vector_store_type: str = "chroma",  # Options: 'chroma', 'pinecone'
         embedding_type: Optional[str] = None,     # Options: 'openai', 'llama', 'huggingface'
         embedding_model_name: Optional[str] = None,  # Required for 'llama' and 'huggingface'
         model_name_for_token_splitter: Optional[str] = None,  # Required for 'token' splitter with OpenAI
@@ -86,8 +86,7 @@ class VectorStoreManager:
         """
         Initialize the embedding model based on the selected embedding_type.
         """
-        self.vector_store_type="chroma"
-        self.embedding_type="llama"
+
         logger.info(f"Initializing embeddings with type: {self.embedding_type}")
         if self.vector_store_type == "pinecone":
             if self.embedding_type != "openai":
@@ -112,7 +111,7 @@ class VectorStoreManager:
                 dummy_vector = self.embeddings.embed_query("test dimension")
                 self.dimension = len(dummy_vector)
             elif self.embedding_type == "llama":
-                self.embedding_model_name="llama3"
+
                 if not self.embedding_model_name:
                     raise ValueError("embedding_model_name must be provided for Llama embeddings.")
                 self.embeddings = OllamaEmbeddings(
@@ -351,6 +350,7 @@ class VectorStoreManager:
             async def aget_relevant_documents(self, query: str) -> List[Document]:
                 # Optional: an async version if the chain calls it
                 return self.get_relevant_documents(query)
+            
 
         return CustomVectorStoreRetriever(
             manager=self,
@@ -460,7 +460,7 @@ class VectorStoreManager:
         logger.info("Clearing all documents from the vector store.")
         try:
             if self.vector_store_type == "chroma":
-                self.vector_store.reset()
+                self.vector_store.delete_collection()
             elif self.vector_store_type == "pinecone":
                 self.vector_store.delete(delete_all=True)
             else:
@@ -498,7 +498,7 @@ class VectorStoreManager:
         logger.info("Listing all indexes in the vector store.")
         try:
             if self.vector_store_type == "chroma":
-                collections = self.vector_store.client.list_collections()
+                collections = self.vector_store.list_collections()
                 return collections
             elif self.vector_store_type == "pinecone":
                 indexes = self.vector_store.list_indexes()
