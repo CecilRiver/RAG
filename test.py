@@ -30,16 +30,22 @@
 # print(response.data[0].embedding)
 
 
-from langchain_ollama import OllamaEmbeddings
+# from langchain_ollama import OllamaEmbeddings
 
-embed = OllamaEmbeddings(
-    model="nomic-embed-text"
-)
+# embed = OllamaEmbeddings(
+#     model="nomic-embed-text"
+# )
 
-input_text = "The meaning of life is 42"
-vector = embed.embed_query(input_text)
-print(vector[:3])
-
+# input_text = "The meaning of life is 42"
+# vector = embed.embed_query(input_text)
+# input_text = "The meaning of life is 43"
+# vector_1 = embed.embed_query(input_text)
+# print(vector[:3])
+# print(vector_1[:3])
+# print(len(vector))
+# print(len(vector_1))
+# print(vector)
+# print(vector_1)
 
 # name = 'Lemon'
 # age = 18
@@ -311,5 +317,191 @@ print(vector[:3])
 
 
 
-from langchain_community.retrievers import BM25Retriever
-print(BM25Retriever)
+# from langchain_community.retrievers import BM25Retriever
+# print(BM25Retriever)
+
+
+# #读取pdf文件并且按页数进行保存
+
+
+
+# from PyPDF2 import PdfReader
+
+# reader = PdfReader(r"C:\Users\ROOT\Desktop\操作手册.pdf")
+# print(reader.pages)
+# parts = []
+
+# # 去除页头和页尾
+# def visitor_body(text, cm, tm, fontDict, fontSize):
+#     y = tm[5]
+#     if y>100 and y<770:
+#         parts.append(text)
+
+# result = []
+# for page in reader.pages:
+#     page.extract_text(visitor_text = visitor_body)
+#     result.append("".join(parts))
+#     parts.clear()
+# print(len(result))
+
+
+# for i in range(len(result)):
+#     print(f"第{i}个：{result[i]}")
+
+# import torch
+# import torch.nn as nn
+# import torch.nn.functional as F
+
+# class SingleHeadAttention(nn.Module):
+#     def __init__(self, embed_dim):
+#         """
+#         单头注意力机制的初始化。
+#         :param embed_dim: 嵌入维度，Query、Key 和 Value 的维度
+#         """
+#         super(SingleHeadAttention, self).__init__()
+#         self.embed_dim = embed_dim
+
+#         # 定义线性层，将输入映射到 Query、Key 和 Value
+#         self.query_linear = nn.Linear(embed_dim, embed_dim)
+#         self.key_linear = nn.Linear(embed_dim, embed_dim)
+#         self.value_linear = nn.Linear(embed_dim, embed_dim)
+
+#         # 缩放因子，用于防止点积结果过大
+#         self.scale = torch.sqrt(torch.FloatTensor([embed_dim]))
+
+#     def forward(self, query, key, value):
+#         """
+#         单头注意力的前向传播。
+#         :param query: 查询张量，形状为 [batch_size, seq_len_q, embed_dim]
+#         :param key: 键张量，形状为 [batch_size, seq_len_k, embed_dim]
+#         :param value: 值张量，形状为 [batch_size, seq_len_k, embed_dim]
+#         :return: 输出张量，形状为 [batch_size, seq_len_q, embed_dim]
+#         """
+#         # 将输入映射到 Query、Key 和 Value
+#         Q = self.query_linear(query)
+#         K = self.key_linear(key)
+#         V = self.value_linear(value)
+
+#         # 计算点积注意力分数
+#         attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
+
+#         # 应用 Softmax 函数，得到注意力权重
+#         attention_weights = F.softmax(attention_scores, dim=-1)
+
+#         # 加权求和，得到最终输出
+#         output = torch.matmul(attention_weights, V)
+
+#         return output, attention_weights
+
+# # 示例输入
+# batch_size = 2
+# seq_len_q = 3  # query的序列长度
+# seq_len_k = 4  # k, v的序列长度，注意这里K、V是成对存在的
+# embed_dim = 6  # 假设embedding的维度为6
+
+# # 随机生成输入数据
+# query = torch.randn(batch_size, seq_len_q, embed_dim)
+# key = torch.randn(batch_size, seq_len_k, embed_dim)
+# value = torch.randn(batch_size, seq_len_k, embed_dim)
+
+# # 初始化单头注意力模块
+# attention = SingleHeadAttention(embed_dim)
+
+# # 前向传播
+# output, attention_weights = attention(query, key, value)
+
+# # 打印输出
+# print("Query:\n", query)
+# print("Key:\n", key)
+# print("Value:\n", value)
+# print("Output:\n", output)
+# print("Attention Weights:\n", attention_weights)
+
+
+
+
+
+# from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+
+# system_template = """
+# You are an advanced and knowledgeable AI assistant designed to provide helpful, accurate, and well-explained responses to user queries. You can access and use context provided through retrieval-augmented generation (RAG), but you are also equipped to supplement your responses with general knowledge when context is insufficient, unrelated, or absent.
+
+# {context}
+
+# ## Key Directives:
+# 1. **Context Utilization:**
+# - Use the provided context to frame your answers whenever it is directly relevant to the query.
+# - If the context contains partial or incomplete information, integrate it appropriately into your response while clearly noting its limitations.
+# - If the context does not relate to the user's query, explicitly state: "The provided context is unrelated to this query.", but only state this if you are absolutely sure there is no document that has any relationship to the query, otherwise you are free to use some parts of the document that is related and then supplement your responses so that the user does not lose trust in your provided answers.
+
+# 2. **Handling Insufficient or Missing Context:**
+# - If no context is provided, or if the context does not address the query:
+#     - Acknowledge the absence of relevant context. Only if you are absolutely sure there is no document that has any relationship to the query, otherwise you are free to use some parts of the document that is related and then supplement your responses so that the user does not lose trust in your provided answers.
+#     - Proceed to answer the query using your own general knowledge, ensuring your response is accurate, thorough, and appropriately scoped.
+
+# 3. **Balancing Context and General Knowledge:**
+# - Clearly differentiate between information derived from the provided context and insights based on your general knowledge. Only if you are absolutely sure there is no document that has any relationship to the query, otherwise you are free to use some parts of the document that is related and then supplement your responses so that the user does not lose trust in your provided answers.
+# - Avoid prioritizing unrelated or conflicting context over general knowledge.
+
+# 4. **Transparency and Clarification:**
+# - Be explicit about the source of your information:
+#     - Say "Based on the provided context..." for context-based information.
+#     - Say "Outside of the context provided..." or "Based on general knowledge..." for other information.
+# - Clearly explain the reasoning or logic behind your responses when necessary.
+
+# 5. **User-Centric Adaptability:**
+# - Tailor responses to the user’s needs and ensure clarity in explanations.
+# - When applicable, suggest follow-up actions (e.g., "You might find more information by...") or further clarify uncertainties.
+
+# ## Response Formatting:
+# - Start your answer by addressing the query directly.
+# - If using context, specify where the relevant information comes from.
+# - If context is unrelated or absent, state this and provide an informed response.
+# - When applicable, provide step-by-step reasoning or examples to enhance understanding.
+
+# ## Example Behavior:
+# 1. **Context Available and Relevant:**
+# - Query: "What is the capital of France?"
+# - Context: "France is a country in Europe with Paris as its capital."
+# - Response: "Based on the provided context, the capital of France is Paris."
+
+# 2. **Context Available but Irrelevant:**
+# - Query: "What is the capital of Germany?"
+# - Context: "France is a country in Europe with Paris as its capital."
+# - Response: "The provided context is unrelated to the query. Based on general knowledge, the capital of Germany is Berlin."
+
+# 3. **No Context Provided:**
+# - Query: "What is the tallest mountain in the world?"
+# - Context: None.
+# - Response: "Based on general knowledge, the tallest mountain in the world is Mount Everest, which stands at 8,848 meters (29,029 feet)."
+
+# 4. **Partial Context:**
+# - Query: "Tell me about renewable energy in Europe."
+# - Context: "Germany is a leader in solar energy adoption."
+# - Response: "Based on the provided context, Germany is a leader in solar energy adoption. Outside of the context provided, Europe also leads in wind and hydroelectric energy, with countries like Denmark and Norway making significant contributions."
+
+# ## Additional Rules:
+# - Avoid speculation. If uncertain, say "I am unsure about this, but I can provide general insights or suggest resources."
+# - Always strive for completeness while respecting the user's query and context.
+# - Ensure your tone remains professional, engaging, and approachable.
+# """
+
+# question = "今天星期几？"
+# chat_prompt = ChatPromptTemplate.from_messages([
+#     SystemMessagePromptTemplate.from_template(system_template),
+#     HumanMessagePromptTemplate.from_template("{question}"),
+# ])
+
+
+# print(chat_prompt)
+
+
+
+for i in range(0,93,3):
+    if(i<93-4):
+        print(f"{i},{i+1},{i+2},{i+3}")
+
+    else:
+
+        print(f"{93-3},{93-2},{93-1}")
+        break

@@ -8,7 +8,7 @@ from src.llm.deepseek import DeepSeekChatbot
 from src.llm.huggingface import HuggingFaceChatbot
 from src.llm.llama import LlamaChatbot
 import os
-
+from langchain.prompts import PromptTemplate
 class LLMPipeline:
     def __init__(
         self,
@@ -119,12 +119,15 @@ class LLMPipeline:
             "response": response_text
         }
 
-    def generate_response(self, query: str, retriever: Chroma) -> Dict[str, str]:
+    def generate_response(self, query: str, retriever: Chroma, prompt_template: Optional[PromptTemplate] = None) -> Dict[str, str]:
         """
         Delegates to chatbot.generate_response(...),
         which uses a RAG pipeline internally.
         """
-        response_text = self.chatbot.generate_response(query, retriever)
+        if prompt_template:
+            response_text = self.chatbot.generate_response(query, retriever, prompt_template=prompt_template)
+        else:
+            response_text = self.chatbot.generate_response(query, retriever)
         return {"query": query, "response": response_text}
 
     def generate_response_with_sources(self, query: str, retriever: Chroma) -> Dict[str, str]:

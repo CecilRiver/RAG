@@ -3,23 +3,53 @@ from src.rag.vector_store import VectorStoreManager
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 from langchain.docstore.document import Document
-
+from langchain.prompts import PromptTemplate
 import jieba
 
-# llama_pipeline = LLMPipeline(model_type="ollama", model_path="deepseek-r1", n_ctx=512, num_threads=4)
 
-# llama_response = llama_pipeline.run("世界上最大的大陆是哪个?")
-# print("Llama Response:")
-# print(llama_response)
+#读取pdf文件并且按页数进行保存
+
+
+from PyPDF2 import PdfReader
+
+reader = PdfReader(r"C:\Users\ROOT\Desktop\连铸\PDF合并.pdf")
+parts = []
+result= []
+
+# 去除页头和页尾
+def visitor_body(text, cm, tm, fontDict, fontSize):
+    y = tm[5]
+    if y>100 and y<770:
+        parts.append(text)
+
+for i in range(0,len(reader.pages),3):
+    if(i<len(reader.pages)-4):
+        reader.pages[i].extract_text(visitor_text = visitor_body)
+        reader.pages[i+1].extract_text(visitor_text = visitor_body)
+        reader.pages[i+2].extract_text(visitor_text = visitor_body)
+        reader.pages[i+3].extract_text(visitor_text = visitor_body)        
+        result.append("".join(parts))
+        parts.clear()
+    else:
+        reader.pages[len(reader.pages)-3].extract_text(visitor_text = visitor_body)
+        reader.pages[len(reader.pages)-2].extract_text(visitor_text = visitor_body)
+        reader.pages[len(reader.pages)-1].extract_text(visitor_text = visitor_body)
+        result.append("".join(parts))
+        parts.clear()
+        break
+
+print(len(result))
+
+# deepseek-API
+llama_pipeline = LLMPipeline(model_type="deepseek" )
+# deepseek-本地部署7b模型
+# llama_pipeline = LLMPipeline(model_type="ollama", model_path="deepseek-r1", n_ctx=512, num_threads=4)
 
 
 # 使用jieb进行分词
 def chinese_tokenizer(text):
     return list(jieba.cut(text, cut_all=False))
 
-# print("BM25 分词测试:")
-# print(chinese_tokenizer("世界上最大的大陆是哪个？"))
-# print(chinese_tokenizer("二战最重要的转折点之一是 1944 年的诺曼底登陆。"))
 
 
 vector_store_manager = VectorStoreManager(
@@ -48,34 +78,414 @@ bm25_retriever.k = 5
 # 初始化集成检索器
 ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, retriever],weights=[0.5,0.5])
 
+chat_prompt_1 = PromptTemplate(
+    input_variables = ["context","question"],
+    template = """
+            
+            这是**工控系统文本**，**所有分析都基于此文本**：{question}
+            这是检索到的相关信息，**如果存在工控系统文本中不存在的内容请忽略**：{context}
 
-# 测试查询
-query = "世界上最大的大陆是哪个？"
+            ## 角色简介:
+            - 角色: 工控系统单点设备与属性提取大师
+            - 语言: 中文
+            - 描述:专注于工控系统中单点设备的识别与属性提取，精准分析各设备的类别、输入输出（IO）特性及过程模型，确保完整理解系统中的设备结构，为下一步的业务拓扑的提取做准备。
+
+            ## 核心目标:
+            - 第一步，明确工控系统文本中单点设备识别的目标和范围。你需要根据目标工控系统的特点，分析系统中涉及控制、监测和执行的单点设备，如控制器、操作员站、工程师站、被控物理过程、传感器和执行器等，为后续属性提取奠定基础。
+            - 第二步，分析各设备的输入输出（IO）信息。重点关注设备的IO寄存器地址、值域范围、业务类型及通讯方式，以掌握设备与系统交互的能力。
+            - 第三步，提取设备的过程模型。识别设备的控制目标、设定值（set point）及相关寄存器地址，以理解设备在控制回路中的角色及动态行为。
+            - 第四步，结合前三步的分析，系统化提取设备的核心属性，并以清晰的结构进行整理，确保数据的可用性与可操作性。
+
+            ## 约束条件:
+            - 推理过程必须逻辑严密。每一步分析应具备层层递进的逻辑关系，确保设备属性提取的准确性与完整性。
+            - 设备识别需精确。避免误分类或遗漏，确保所有核心设备都被识别并提取。
+            - IO信息应具体。包括IO寄存器地址、值域范围、业务类型及通讯方式，确保设备的接口能力描述完整。
+            - 过程模型分析需深入。明确设备的控制目标、设定值（set point）及其寄存器地址，确保控制策略的有效性。
+            - 避免遗漏细节。所有涉及的设备、IO参数和控制模型信息都需精确记录，确保数据的完整性和可操作性。
+
+            ## 重要补充：
+            - **如果检索到的相关信息（{context}）与任务无关或无助于提取设备属性，可以忽略该信息，仅基于工控系统文本（{question}）进行分析**。
+            - 如果某些设备属性无法从工控系统文本中提取出来，则在输出格式中填充“不存在”。不要编造信息。
+            - 如果工控系统文本中不存在任何可提取的单点设备，则输出“【不存在单点设备】”。
+            - 如果工控系统文本中存在可提取的单点设备，则必须完整提取每一个设备，并按照规定的格式输出，不得遗漏。
+
+            ## 专项技能:
+            - 精准识别单点设备: 能够从复杂的工控系统文本中精准识别控制器、操作员站、工程师站、被控物理过程、传感器和执行器等设备，并准确归类。
+            - 深入分析设备IO特性: 擅长提取设备的IO寄存器地址、值域范围、业务类型及通讯方式，以准确描述设备的输入输出交互能力。
+            - 精确解析设备过程模型: 具备深度理解设备控制目标、设定值（set point）及其寄存器地址的能力，确保控制逻辑的清晰性和可操作性。
+            - 系统化逻辑提取能力: 能够从多个角度分析设备的属性，并以清晰的结构整理输出，确保数据的高效利用。
+            - 细致的推理与逻辑梳理: 通过分步推理，层层递进地识别设备及其属性，确保最终提取的逻辑严谨且无遗漏。
+
+            ## 处理流程:
+            - 作为工控系统单点设备与属性提取大师，你将**以提供的工控系统文本为主体**，并结合检索到的相关信息作为辅助，运用你的“专项技能”能力分析设备类型、设备IO和设备过程模型。
+            - 第一步，你需要一步步思考并推理，分析提供的工控系统文本和检索到的相关信息，分析检索到的相关信息中是否存在不属于提供的工控系统文本中的内容，如果存在，忽略检索到的相关信息中的内容。
+                例如：火焰切割机在检索到的相关信息中出现过，但提供的工控系统文本中没有提及过火焰收割机，则忽略火焰收割机的相关内容
+            - 第二步，你需要一步步思考并推理，从**工控系统文本中**识别单点设备，并明确它们的系统定位，属于行为主体或者行为客体。之后分析单点设备的类型，类型涵盖控制器、操作员站、工程师站、被控物理过程、传感器和执行器。
+            - 第三步，你需要一步步思考并推理，详细分析各个单点设备的IO信息，包括寄存器地址、值域范围、业务类型和通讯方式，以确保设备输入输出的完整描述。
+            - 第四步，你需要一步步思考并推理，提取各个单点设备的过程模型，明确设备的控制目标、设定值（set point）及其寄存器地址，以理解设备的行为和控制策略。
+            - 第五步，你需要一步步思考并推理，结合以上四步你的推理过程，综合整理设备属性信息，确保每一个提取出的设备都能在提供的工控系统文本中找到，同时系统化提取并确保数据完整，并且将提取出的单点设备按输出格式表述出来。
+
+            ## 输出格式:
+            【推理过程】<该设备的提取过程：200字>
+            【设备名称】<提取出的设备名称>
+            【设备定位】<行为主体/行为客体>
+            【设备类型】<controller/操作员站/工程师站/controlled process/传感器/执行器>
+            【设备IO】
+                IO寄存器地址: <设备IO的寄存器地址> 
+                IO值域范围: <设备IO的数据范围> 
+                IO业务类型: <设备IO的业务类型> 
+                IO通讯方式: <设备的IO通讯方式>
+            【设备过程模型】
+                目标: <设备的控制目标> 
+                set point: <设备的设定值> 
+                set point寄存器地址: <设定值的寄存器地址>
+
+
+    """
+)
+
+
+chat_prompt_2 = PromptTemplate(
+    input_variables = ["device","text"],
+    template = """
+
+        这是**工控系统文本**，**所有分析都基于此文本**：{text}
+        这是已经提取出的单点设备：{device}
+
+        ## 角色简介:
+        - 角色: 工控系统业务拓扑提取大师
+        - 语言: 中文
+        - 描述: 专注于工控系统中的业务拓扑结构提取，精准识别系统中行为主体和行为客体之间发生的行为内容，并细致分析行为内容的行为类型、行为属性及行为数值，确保全面理解系统的控制与反馈机制，为后续行为上下文的提取提供关键数据支持。
+       
+        ## 核心目标:
+        - 第一步，明确业务拓扑分析的目标和范围。你需要从工控系统文本中识别各类控制行为，包括控制指令、数据读取/写入、反馈机制等，为后续分析奠定基础，同时结合已经提取出的单点设备，明确每个控制行为的行为主体和行为客体。
+        - 第二步，深入分析各类行为的行为类型。明确系统中的控制行为（control action，如read、write）及反馈行为（feedback，如success、failure、error），确保掌握系统在不同状态下的业务流程。
+        - 第三步，提取行为的关键属性。包括IO寄存器地址、set point寄存器地址等信息，以精确定位系统各个行为在控制过程中的作用。
+        - 第四步，分析行为的数值特征。明确行为涉及的IO值、值域范围或set point值，确保行为的可量化性。
+        - 第五步，结合前三步的分析，系统化提取业务拓扑数据，并整理输出，以支持系统优化与控制策略制定。
+
+        ## 约束条件:
+        - 推理过程必须逻辑严密。确保对每个行为的分析层层递进，保证业务拓扑的完整性和准确性。
+        - 行为类型识别需精准。确保正确区分control action（read/write）和feedback（success/failure/error），避免误分类。
+        - 行为属性需完整。确保提取的IO寄存器地址、set point寄存器地址等信息准确无遗漏，以支持精准分析。
+        - 行为数值需具体。确保IO值、值域范围或set point值的提取完整，以便数据驱动的分析与优化。
+        - 避免遗漏关键行为。确保所有核心业务行为都能被识别和提取，确保数据完整性。
+
+        ## 重要补充：
+        - 如果某些业务拓扑的相关属性数据无法从工控系统文本中提取出来，则在输出格式中填充“不存在”。不要编造信息。
+        - 如果工控系统文本中不存在任何可提取的业务拓扑结构，则输出“【不存在业务拓扑】”。
+        - 如果工控系统文本中存在可提取的业务拓扑结构，则必须完整提取每一个业务拓扑结构，并按照规定的格式输出，不得遗漏。
+
+        ## 专项技能:
+        - 精准识别业务行为: 能够从复杂的工控系统文本中精准提取control action（read、write）和feedback（success、failure、error）行为，并分析出行为的主体和客体，确保分析全面。
+        - 深入分析行为属性: 擅长提取行为涉及的IO寄存器地址、set point寄存器地址等核心数据，以支持系统交互分析。
+        - 精确解析行为数值: 具备深度理解IO值、值域范围及set point值的能力，确保数据的可量化性。
+        - 系统化拓扑提取能力: 能够从多个角度分析行为的相互关系，并以清晰的结构整理输出，确保数据的高效利用。
+        - 细致的推理与逻辑梳理: 通过分步推理，层层递进地识别业务行为及其属性，确保最终提取的逻辑严谨且无遗漏。
+
+        ## 处理流程:
+        - 作为工控系统业务拓扑提取大师，你将从提供的工控系统文本中，结合已经提取出的单点设备，运用你的“专项技能”能力分析行为主体，行为客体，行为类型、行为属性和行为数值。
+        - 第一步，你需要一步步思考并推理，从文本中识别业务行为，确保涵盖control action（read、write）和feedback（success、failure、error）等关键行为，并明确它们的作用，同时结合已经提取出的单点设备，明确每个业务行为的行为主体和行为客体。
+        - 第二步，你需要一步步思考并推理，详细分析行为属性，包括IO寄存器地址、set point寄存器地址等，以确保行为的精准描述。
+        - 第三步，你需要一步步思考并推理，提取行为的数值特征，明确IO值、值域范围及set point值，以量化业务行为的影响。
+        - 第四步，你需要一步步思考并推理，结合以上三步你的推理过程，综合整理业务拓扑数据，系统化提取并确保数据完整，并且将提取出的业务拓扑按输出格式表述出来，输出格式中行为主体和行为客体的相关内容从已经提取出的单点设备中拿取即可。
+
+        ## 输出格式:
+        【推理过程】<该行为的提取过程：200字>
+        【行为主体】<设备名称>
+        【行为主体的设备类型】<controller/操作员站/工程师站/controlled process/传感器/执行器>
+        【行为主体的设备IO】
+            IO寄存器地址: <设备IO的寄存器地址> 
+            IO值域范围: <设备IO的数据范围> 
+            IO业务类型: <设备IO的业务类型> 
+            IO通讯方式: <设备的IO通讯方式>
+        【行为主体的设备过程模型】
+            目标: <设备的控制目标> 
+            set point: <设备的设定值> 
+            set point寄存器地址: <设定值的寄存器地址>
+
+        【行为客体】<设备名称>
+        【行为客体的设备类型】<controller/操作员站/工程师站/controlled process/传感器/执行器>
+        【行为客体的设备IO】
+            IO寄存器地址: <设备IO的寄存器地址> 
+            IO值域范围: <设备IO的数据范围> 
+            IO业务类型: <设备IO的业务类型> 
+            IO通讯方式: <设备的IO通讯方式>
+        【行为客体的设备过程模型】
+            目标: <设备的控制目标> 
+            set point: <设备的设定值> 
+            set point寄存器地址: <设定值的寄存器地址>
+
+        【行为名称】<提取出的业务行为名称>
+        【行为类型】< control action【read、write】、feedback【success、failure、error】>
+        【行为属性】
+            IO寄存器地址: <行为涉及的设备IO的寄存器地址> 
+            set point寄存器地址: <行为涉及的set point的寄存器地址> 
+        【行为数值】
+            IO值/值域范围: <行为涉及的IO值或值域范围>
+            set point值: <行为涉及的set point值>
 
 
 
-# BM25的检索
-print("BM25的检索：")
-bm25_results = bm25_retriever.invoke(query)
-for idx, doc in enumerate(bm25_results):
-    print(f"BM25 文档 {idx+1} : {doc.page_content}\n")
+    """
+)
+
+chat_prompt_3 = PromptTemplate(
+    input_variables = ["text","action"],
+    template = """
+
+    这是**工控系统文本**，**所有分析都基于此文本**：{text}
+    这是已经提取出的业务拓扑：{action}
+
+    ## 角色简介:
+    - 角色: 工控系统业务逻辑提取大师
+    - 语言: 中文
+    - 描述: 专注于工控系统中的业务（行为）逻辑提取，精准分析行为的触发类型及触发逻辑，确保完整理解系统的控制流程和反馈机制，为优化系统控制策略提供关键数据支持。
+
+    ## 核心目标:
+    - 第一步，明确业务逻辑分析的目标和范围。你需要结合工控系统文本和已经提取出的业务拓扑，识别每个业务拓扑中业务行为的触发类型及其影响因素。 
+    - 第二步，识别行为的触发类型。明确系统中的业务逻辑是周期式触发（定期执行的控制行为）还是中断式触发（由事件或特定条件触发的行为）。
+    - 第三步，提取周期触发逻辑。包括write行为的参考输入、输入到输出的触发规则、触发频率等，确保周期式行为的控制逻辑清晰可见。
+    - 第四步，提取中断触发逻辑。分析write行为的参考输入、输入到输出的触发规则及触发原理，以理解系统如何在特定事件下执行控制行为。
+    - 第五步，结合前三步的分析，系统化提取业务逻辑，并整理输出，以支持系统优化与控制策略制定。
+
+    ## 约束条件:
+    - 推理过程必须逻辑严密。确保对每个行为的分析层层递进，保证业务逻辑的完整性和准确性。
+    - 触发类型识别需精准。确保正确区分周期式和中断式触发方式，避免误分类。
+    - 周期触发逻辑需完整。确保write行为的参考输入、输入到输出的触发规则及触发频率信息准确无遗漏。
+    - 中断触发逻辑需具体。确保write行为的参考输入、输入到输出的触发规则及触发原理的提取完整，以便数据驱动的分析与优化。
+    - 确保业务逻辑的可操作性。所有提取的信息需具有实际指导意义，确保可用于优化控制策略。
+
+    ## 重要补充：
+    - 如果某些业务逻辑的相关属性数据无法从工控系统文本中提取出来，则在输出格式中填充“不存在”。不要编造信息。
+    - 如果工控系统文本中不存在任何可提取的业务逻辑，则输出“【不存在业务逻辑】”。
+    - 如果工控系统文本中存在可提取的业务逻辑，则必须完整提取每一个业务逻辑，并按照规定的格式输出，不得遗漏。
+
+    ## 专项技能:
+    - 精准识别行为的触发类型: 能够从复杂的工控系统文本中精准提取周期式触发和中断式触发的业务逻辑，确保逻辑分析全面准确。
+    - 深入分析周期触发逻辑: 擅长提取write行为的参考输入、输入到输出的触发规则及触发频率，确保周期行为的触发逻辑完整。
+    - 精确解析中断触发逻辑: 具备深度理解write行为的参考输入、输入到输出的触发规则及触发原理的能力，确保控制行为的触发机制清晰可见。
+    - 系统化逻辑提取能力: 能够从多个角度分析行为的上下文，并以清晰的结构整理输出，确保数据的高效利用。
+    - 细致的推理与逻辑梳理: 通过分步推理，层层递进地识别业务逻辑及其触发机制，确保最终提取的逻辑严谨且无遗漏。
+
+    ## 处理流程:
+    - 作为工控系统业务逻辑提取大师，你将从提供的工控系统文本中，结合已经提取出的业务拓扑，运用你的“专项技能”能力分析行为上下文的触发类型、周期触发逻辑和中断触发逻辑。
+    - 第一步，你需要一步步思考并推理，从文本中识别已经提取出的业务拓扑中行为的触发类型，确保涵盖周期式触发和中断式触发的业务逻辑，并明确它们的作用。
+    - 第二步，你需要一步步思考并推理，详细分析周期触发逻辑，包括write行为的参考输入、输入到输出的触发规则及触发频率，以确保逻辑的精准描述。
+    - 第三步，你需要一步步思考并推理，提取中断触发逻辑，分析write行为的参考输入、输入到输出的触发规则及触发原理，以量化业务行为的影响。
+    - 第四步，你需要一步步思考并推理，结合以上三步你的推理过程，综合整理业务逻辑数据，系统化提取并确保数据完整，以便后续优化系统控制逻辑，并且将提取出的业务逻辑按输出格式表述出来，输出格式中业务拓扑的相关内容从已经提取出的单点设备中拿取即可。
+
+    ## 输出格式:
+    【推理过程】<该行为上下文的提取过程：200字>
+
+    【行为主体】<设备名称>
+    【行为主体的设备类型】<controller/操作员站/工程师站/controlled process/传感器/执行器>
+    【行为主体的设备IO】
+        IO寄存器地址: <设备IO的寄存器地址> 
+        IO值域范围: <设备IO的数据范围> 
+        IO业务类型: <设备IO的业务类型> 
+        IO通讯方式: <设备的IO通讯方式>
+    【行为主体的设备过程模型】
+        目标: <设备的控制目标> 
+        set point: <设备的设定值> 
+        set point寄存器地址: <设定值的寄存器地址>
+
+    【行为客体】<设备名称>
+    【行为客体的设备类型】<controller/操作员站/工程师站/controlled process/传感器/执行器>
+    【行为客体的设备IO】
+        IO寄存器地址: <设备IO的寄存器地址> 
+        IO值域范围: <设备IO的数据范围> 
+        IO业务类型: <设备IO的业务类型> 
+        IO通讯方式: <设备的IO通讯方式>
+    【行为客体的设备过程模型】
+        目标: <设备的控制目标> 
+        set point: <设备的设定值> 
+        set point寄存器地址: <设定值的寄存器地址>
+
+    【行为名称】<提取出的业务行为名称>
+    【行为类型】< control action【read、write】、feedback【success、failure、error】>
+    【行为属性】
+        IO寄存器地址: <行为涉及的设备IO的寄存器地址> 
+        set point寄存器地址: <行为涉及的set point的寄存器地址> 
+    【行为数值】
+        IO值/值域范围: <行为涉及的IO值或值域范围>
+        set point值: <行为涉及的set point值>
+
+    【行为上下文的触发类型】< 周期式 / 中断式>
+    【行为上下文的周期触发逻辑】<write行为的参考输入、输入到输出的触发规则、触发频率>
+    【行为上下文的中断触发逻辑】<write行为的参考输入、输入到输出的触发规则、触发频率>
 
 
-# Chroma向量检索
-print("Chroma向量搜索：")
-vector_results = retriever.get_relevant_documents(query)
-for idx, doc in enumerate(vector_results):
-    print(f"Chroma 文档 {idx+1}： {doc.page_content}\n")
+    """
+)
+
+
+
+# for i in range(6):
+#     rag_response = llama_pipeline.generate_response(result[i], ensemble_retriever, prompt_template=chat_prompt_1)
+#     print("Retrieval-Augmented Generation Response:")
+#     print(rag_response)
+
+chat_prompt_test=PromptTemplate(
+    input_variables = ["context","question"],
+    template="""
+这是相同提示词的连续测试，以测试api能否在连续不间断的请求下回复
+            这是问题：{question}
+            这是检索到的相关信息：{context}
+
+""")
+
+def retrieve(query, retriever):
+    result = retriever.invoke(query)
+    return {"context":result,"question":query}
+
+
+for i in range(len(result)):
+    # print(f"第{i+1}条")
+
+    # result[i]是工控系统文本
+    retrieved_data = retrieve(result[i], ensemble_retriever)
+    formatted_prompt = chat_prompt_1.format(
+        context=retrieved_data["context"],
+        question=retrieved_data["question"]
+    )
+    rag_response = llama_pipeline.run(formatted_prompt)
+    # 提取出的单点设备
+    temp_result_1 = rag_response['response']['result'].content
+    print(temp_result_1)
+
+    # 立即写入文件
+    with open("deepseek.txt", "a", encoding="utf-8") as file:
+        file.write(str(result[i]) + "\n")
+        file.write(str(temp_result_1) + "\n")
+
+    # 提取业务拓扑, 输入：工控系统文本和单点设备
+    formatted_prompt = chat_prompt_2.format(
+        text=result[i],
+        device=temp_result_1
+    )
+    response = llama_pipeline.run(formatted_prompt)
+    temp_result_2 = response['response']['result'].content
+    print(temp_result_2)
+
+    # 立即写入文件
+    with open("deepseek.txt", "a", encoding="utf-8") as file:
+        file.write(str(temp_result_2) + "\n")
+
+    # 提取业务逻辑，输入：工控系统文本和业务拓扑
+    formatted_prompt = chat_prompt_3.format(
+        text=result[i],
+        action=temp_result_2
+    )
+    response = llama_pipeline.run(formatted_prompt)
+    final_result = response['response']['result'].content
+    print(final_result)
+
+    # 立即写入文件
+    with open("deepseek.txt", "a", encoding="utf-8") as file:
+        file.write(str(final_result) + "\n")
+
+
+
+# for i in range(6):
+#     rag_response = llama_pipeline.generate_response(f"这是测试{i}", ensemble_retriever, prompt_template=chat_prompt_test)
+#     print("Retrieval-Augmented Generation Response:")
+#     print(rag_response)
+
+
+# """
+
+# print(llama_pipeline.run(f"{prompt}\n\n输入文本：：{result[1]}"))
+# print(llama_pipeline.run(f"{prompt}\n\n输入文本：：{result[2]}"))
+
+
+
+# result = []
+# for page in reader.pages:
+#     page.extract_text(visitor_text = visitor_body)
+#     result.append("".join(parts))
+#     parts.clear()
+# print(len(result))
 
 
 
 
-results = ensemble_retriever.invoke(query)
+# llama_pipeline = LLMPipeline(model_type="ollama", model_path="deepseek-r1", n_ctx=512, num_threads=4)
 
-print("混合 Ensemble 检索结果")
-# 打印结果
-for idx,doc in enumerate(results):
-    print(f"文档{idx+1}：{doc.page_content}\n")
+
+
+
+
+# llama_pipeline = LLMPipeline(model_type="deepseek" )
+
+# llama_response = llama_pipeline.run("用“新年快乐万事如意”写一首藏头诗")
+# print("Llama Response:")
+# print(llama_response)
+
+
+# # 使用jieb进行分词
+# def chinese_tokenizer(text):
+#     return list(jieba.cut(text, cut_all=False))
+
+# print("BM25 分词测试:")
+# print(chinese_tokenizer("世界上最大的大陆是哪个？"))
+# print(chinese_tokenizer("二战最重要的转折点之一是 1944 年的诺曼底登陆。"))
+
+
+# vector_store_manager = VectorStoreManager(
+#             vector_store_type="chroma",
+#             collection_name="langchain_collection",
+#             embedding_model_name = "nomic-embed-text",
+#             #embedding_model_name="llama3",
+#             embedding_type="llama"
+#         )
+
+# retriever = vector_store_manager.as_retriever()
+
+
+# # 从Chroma 取出所有数据，并转化为Document 格式
+# chroma_docs = vector_store_manager.vector_store.get()
+# bm25_docs = [
+#     Document(page_content=text, metadata = metadata)
+#     for text, metadata in zip(chroma_docs["documents"],chroma_docs["metadatas"])
+# ]
+# bm25_retriever = BM25Retriever.from_documents(
+#     bm25_docs,
+#     tokenizer = chinese_tokenizer # 显式指定中文分词器
+#     )
+# bm25_retriever.k = 5
+
+# # 初始化集成检索器
+# ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, retriever],weights=[0.5,0.5])
+
+
+# # 测试查询
+# query = "世界上最大的大陆是哪个？"
+
+
+
+# # BM25的检索
+# print("BM25的检索：")
+# bm25_results = bm25_retriever.invoke(query)
+# for idx, doc in enumerate(bm25_results):
+#     print(f"BM25 文档 {idx+1} : {doc.page_content}\n")
+
+
+# # Chroma向量检索
+# print("Chroma向量搜索：")
+# vector_results = retriever.get_relevant_documents(query)
+# for idx, doc in enumerate(vector_results):
+#     print(f"Chroma 文档 {idx+1}： {doc.page_content}\n")
+
+
+
+
+# results = ensemble_retriever.invoke(query)
+
+# print("混合 Ensemble 检索结果")
+# # 打印结果
+# for idx,doc in enumerate(results):
+#     print(f"文档{idx+1}：{doc.page_content}\n")
 
 
 # query = "无人驾驶汽车的定义与分类是什么?"

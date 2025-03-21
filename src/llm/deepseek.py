@@ -25,7 +25,7 @@ class DeepSeekChatbot:
         self,
         api_key: str,
         model: str = "deepseek-chat",  # Set a default value
-        temperature: float = 0.7,
+        temperature: float = 1.0,
         max_tokens: int = 150,
         top_p: float = 0.9,
         frequency_penalty: float = 0.3,
@@ -49,13 +49,8 @@ class DeepSeekChatbot:
         self.api_key = api_key
         self.frequency_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
-        self.llm = LangchainChatOpenAI(
-            api_key=self.api_key if self.api_key else os.getenv("DEEPSEEK_API_KEY"),
-            model= self.model if self.model else "deepseek-chat",
-            base_url="https://api.deepseek.com",
-            temperature=temperature,
-            # max_tokens=max_tokens
-        )
+
+
 
         # Prepare a memory object for multi-turn conversation
         # (But we won't finalize the chain until we have a retriever)
@@ -230,8 +225,6 @@ class DeepSeekChatbot:
         :param chain_type:      (Unused, for signature compatibility).
         :return:                The answer text.
         """
-        if prompt_template is None:
-            prompt = hub.pull("hwchase17/multi-query-retriever")
             
         # Create or update the chain
         self.create_retrieval_qa_chain(retriever, chain_type, prompt_template)
