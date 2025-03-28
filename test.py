@@ -497,11 +497,45 @@
 
 
 
-for i in range(0,93,3):
-    if(i<93-4):
-        print(f"{i},{i+1},{i+2},{i+3}")
+# for i in range(0,93,3):
+#     if(i<93-4):
+#         print(f"{i},{i+1},{i+2},{i+3}")
 
+#     else:
+
+#         print(f"{93-3},{93-2},{93-1}")
+#         break
+
+
+from PyPDF2 import PdfReader
+
+reader = PdfReader(r"C:\Users\ROOT\Desktop\1dtapbjdq18l9v811g-已解锁.pdf")
+parts = []
+result= []
+
+# 去除页头和页尾
+def visitor_body(text, cm, tm, fontDict, fontSize):
+    y = tm[5]
+    if y>70 and y<770:
+        parts.append(text)
+
+for i in range(0,len(reader.pages),3):
+    if(i<len(reader.pages)-4):
+        reader.pages[i].extract_text(visitor_text = visitor_body)
+        reader.pages[i+1].extract_text(visitor_text = visitor_body)
+        reader.pages[i+2].extract_text(visitor_text = visitor_body)
+        reader.pages[i+3].extract_text(visitor_text = visitor_body)        
+        result.append("".join(parts))
+        parts.clear()
     else:
-
-        print(f"{93-3},{93-2},{93-1}")
+        reader.pages[len(reader.pages)-3].extract_text(visitor_text = visitor_body)
+        reader.pages[len(reader.pages)-2].extract_text(visitor_text = visitor_body)
+        reader.pages[len(reader.pages)-1].extract_text(visitor_text = visitor_body)
+        result.append("".join(parts))
+        parts.clear()
         break
+
+print(len(result))
+print(result[0])
+print("-------------------------------------------------------------------------------------------")
+print(result[1])
