@@ -25,9 +25,12 @@ class DeepSeekChatbot:
         self,
         api_key: str,
         model: str = "deepseek-chat",  # Set a default value
+        # 0 - 1.5
         temperature: float = 1.0,
         max_tokens: int = 150,
+        # 0 - 1.0
         top_p: float = 0.9,
+        # 频率处罚
         frequency_penalty: float = 0.3,
         presence_penalty: float = 0.5
     ):
@@ -51,7 +54,6 @@ class DeepSeekChatbot:
         self.presence_penalty = presence_penalty
 
 
-        
         # Prepare a memory object for multi-turn conversation
         # (But we won't finalize the chain until we have a retriever)
         self.memory = ConversationBufferMemory(

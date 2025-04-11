@@ -421,7 +421,7 @@ docs = [
 # 初始化Chroma向量数据库
 vector_store_manager = VectorStoreManager(
             vector_store_type="chroma",
-            collection_name="langchain_collection",
+            collection_name="thermal_power",
             embedding_model_name = "nomic-embed-text",
             #embedding_model_name="llama3",
             embedding_type="llama"

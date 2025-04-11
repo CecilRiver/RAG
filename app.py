@@ -13,6 +13,17 @@ from io import StringIO
 import shutil  # 导入用于文件夹清理的模块
 import requests
 from streamlit_lottie import st_lottie
+from src.llm.llm_pipeline import LLMPipeline
+from PyPDF2 import PdfReader
+from src.llm.llm_pipeline import LLMPipeline
+from src.rag.vector_store import VectorStoreManager
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
+from langchain.docstore.document import Document
+from langchain.prompts import PromptTemplate
+import jieba
+import math
+from datetime import datetime
 
 # 从 .env 文件加载环境变量
 load_dotenv()
@@ -68,23 +79,18 @@ elsevier_api_secret = os.getenv('ELSEVIER_API_SECRET')
 
 
 # 直接写死 MongoDB URI
-mongo_uri = "mongodb://localhost:27017/rag?retryWrites=true&w=majority"
+mongo_url = "mongodb://localhost:27017/rag?retryWrites=true&w=majority"
 
 # 连接到 MongoDB
-mongo_client = MongoClient(mongo_uri)
+mongo_client = MongoClient(mongo_url)
 
 # 访问数据库和集合
 db = mongo_client["rag"]  # 使用数据库 rag
 chats_collection = db["history"]  # 使用集合 history
 
 # Streamlit 应用标题
-st.title("RAG For Extraction by zkg")
+st.title("LLM For Extraction by zkg")
 
-# 初始化聊天机器人
-if "chatbot" not in st.session_state:
-    st.session_state.chatbot = None
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
 # CSS 样式
 def apply_styles():
@@ -197,13 +203,13 @@ add_header_animation()
 st.sidebar.markdown("""
 <div style="
     background-color: #585858; 
-    padding: 10px; 
-    border-radius: 8px; 
+    padding: 5px; 
+    border-radius: 5px; 
     text-align: center; 
-    margin-bottom: 15px;
+    margin-bottom: 5px;
     border: 1px solid #dcdcdc;">
     <h2 style="color: white; font-family: 'Arial', sans-serif; margin: 0;">
-        <strong>Choices</strong> 
+        <strong>Customization Options</strong> 
     </h2>
 </div>
 """, unsafe_allow_html=True)
@@ -214,115 +220,214 @@ st.sidebar.markdown("""
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 辅助函数
-def initialize_chatbot(
-    data_task=None,
-    vector_store_type="chroma",
-    model_type="openai",
-    data_value=None,
-    openai_model=None,
-    llama_model_path=None,
-    huggingface_model=None,
-    deepseek_model=None,
-    embedding_type="llama",
-    rag_type = "LightRAG",  # 新参数，用于在不同框架之间切换
-    ollama_embedding_model = None
-):
 
-    if model_type is None:
-        raise ValueError("Model type is required but not provided.")
-    if model_type == "openai" and openai_model is None:
-        raise ValueError("OpenAI model is required but not provided.")
-        # 如果没有提供 data_task 或 data_value：
-        #     默认使用 "LangChain" 作为 RAG 类型
+
+
+
+chat_prompt_1 = PromptTemplate(
+    input_variables = ["context","question"],
+    template = """
+            
+            这是**工控系统文本**，**所有分析都基于此文本**：{question}
+            这是检索到的相关信息，**如果存在工控系统文本中不存在的内容请忽略**：{context}
+
+            ## 角色简介:
+            - 角色: 工控系统单点设备与属性提取大师
+            - 语言: 中文
+            - 描述:专注于工控系统中单点设备的识别与属性提取，精准分析各设备的名称、定位与类型，确保完整理解系统中的设备结构，为下一步的业务拓扑的提取做准备。
+
+            ## 核心目标:
+            - 第一步，明确工控系统文本中单点设备识别的目标和范围。你需要根据目标工控系统的特点，分析系统中涉及控制、监测和执行的单点设备，如控制器、操作员站、工程师站、被控物理过程、传感器和执行器等，为后续属性提取奠定基础。
+            - 第二步，分析各设备的设备名称，此名称是唯一的。
+            - 第三步，分析设备在该段文本中的设备定位，定位是不唯一的，可能是行为主体也可能是行为客体。
+            - 第四步，分析设备的设备类型，可能是控制器、操作员站、工程师站、被控物理过程、传感器或执行器，设备类型是唯一的。
+            - 第五步，结合前四步的分析，系统化提取设备的核心属性，并以清晰的结构进行整理，确保数据的可用性与可操作性。
+
+            ## 约束条件:
+            - 推理过程必须逻辑严密。每一步分析应具备层层递进的逻辑关系，确保设备属性提取的准确性与完整性。
+            - 设备识别需精确。避免误分类或遗漏，确保所有核心设备都被识别并提取。
+            - 过程模型分析需深入，明确设备的设备名称、设备定位及设备类型。
+            - 避免遗漏细节，确保数据的完整性和可操作性。
+
+            ## 重要补充：
+            - **如果检索到的相关信息（{context}）与任务无关或无助于提取设备属性，可以忽略该信息，仅基于工控系统文本（{question}）进行分析**。
+            - 如果某些设备属性无法从工控系统文本中提取出来，则在输出格式中填充“不存在”。不要编造信息。
+            - 如果工控系统文本中不存在任何可提取的单点设备，则输出“【不存在单点设备】”。
+            - 如果工控系统文本中存在可提取的单点设备，则必须完整提取每一个设备，并按照规定的格式输出，不得遗漏。
+
+            ## 专项技能:
+            - 精准识别单点设备: 能够从复杂的工控系统文本中精准识别控制器、操作员站、工程师站、被控物理过程、传感器和执行器等设备，并准确归类。
+            - 系统化逻辑提取能力: 能够从多个角度分析设备的属性，并以清晰的结构整理输出，确保数据的高效利用。
+            - 细致的推理与逻辑梳理: 通过分步推理，层层递进地识别设备及其属性，确保最终提取的逻辑严谨且无遗漏。
+
+            ## 处理流程:
+            - 作为工控系统单点设备与属性提取大师，你将**以提供的工控系统文本为主体**，并结合检索到的相关信息作为辅助，运用你的“专项技能”能力分析设备名称、设备定位和设备类型。
+            - 第一步，你需要一步步思考并推理，分析提供的工控系统文本和检索到的相关信息，分析检索到的相关信息中是否存在不属于提供的工控系统文本中的内容，如果存在，忽略检索到的相关信息中的内容。
+                例如：火焰切割机在检索到的相关信息中出现过，但提供的工控系统文本中没有提及过火焰收割机，则忽略火焰收割机的相关内容
+            - 第二步，你需要一步步思考并推理，从**工控系统文本中**识别出所有的单点设备。
+            - 第三步，你需要一步步思考并推理，详细分析各个单点设备的设备名称，此名称是唯一的，确保设备输入输出的完整描述。
+            - 第四步，你需要一步步思考并推理，详细分析各个单点设备的设备类型，此类型是唯一的，可能是控制器、操作员站、工程师站、被控物理过程、传感器或执行器。
+            - 第五步，你需要一步步思考并推理，结合以上四步你的推理过程，综合整理设备属性信息，确保每一个提取出的设备都能在提供的工控系统文本中找到，同时系统化提取并确保数据完整，并且将提取出的单点设备按输出格式表述出来。
+
+            ## 输出格式:
+            【推理过程】<该设备的提取过程：200字>
+            【设备名称】<提取出的设备名称>
+            【设备定位】<行为主体/行为客体/行为主体和行为客体>
+            【设备类型】<控制器/操作员站/工程师站/被控物理过程/传感器/执行器>
+
+
+    """
+)
+
+
+chat_prompt_2 = PromptTemplate(
+    input_variables = ["device","text"],
+    template = """
+
+        这是**工控系统文本**，**所有分析都基于此文本**：{text}
+        这是已经提取出的单点设备：{device}
+
+        ## 角色简介:
+        - 角色: 工控系统业务拓扑提取大师
+        - 语言: 中文
+        - 描述: 专注于工控系统中的业务拓扑结构提取，精准识别系统中行为主体和行为客体之间发生的行为内容，并细致分析行为内容的行为类型、行为内容、行为目标类型、行为目标参数名称和行为目标参数值，确保全面理解系统的控制与反馈机制，为后续行为上下文的提取提供关键数据支持。
+       
+        ## 核心目标:
+        - 第一步，明确业务拓扑分析的目标和范围。你需要从工控系统文本中识别各类控制行为，包括控制指令、数据读取/写入、反馈机制等，为后续分析奠定基础，同时结合已经提取出的单点设备，明确每个控制行为的行为主体和行为客体。
+        - 第二步，深入分析各类行为的行为类型，行为类型为读或者写，行为类型是唯一的。
+        - 第三步，分析行为的行为目标类型，行为目标类型为改变行为客体的输入、改变行为客体的输出或改变行为客体的设定值，行为目标类型是唯一的。
+        - 第四步，分析行为的行为目标参数名称，行为目标参数名称可以是开关状态、温度设定值、输入电压或者其他类似目标参数名称，具体要看文本中的行为是什么样的，如果提取不出来，则设置为null。
+        - 第五步，分析行为的行为目标参数值，行为目标参数值可以是开、关、调高、调低或者其他类似目标参数值，具体要看文本中的行为是什么样的，如果提取不出来，则设置为null。
+        - 第六步，结合前五步的分析，系统化提取业务拓扑数据，并整理输出，以支持系统优化与控制策略制定。
+
+        ## 约束条件:
+        - 推理过程必须逻辑严密。每一步分析应具备层层递进的逻辑关系，确保业务拓扑提取的准确性与完整性。
+        - 业务拓扑识别需精确。避免误分类或遗漏，确保所有业务拓扑都被识别并提取。
+        - 推理分析需深入，明确行为内容的行为类型、行为内容、行为目标类型、行为目标参数名称和行为目标参数值。
+        - 行为目标参数名称不可以缺少，如果提取不出来，可以将其值设置为null。
+        - 行为目标参数值不可以缺少，如果提取不出来，可以将其值设置为null。
+        - 避免遗漏细节，确保数据的完整性和可操作性。
+
+        ## 重要补充：
+        - 如果某些业务拓扑的相关属性数据无法从工控系统文本中提取出来，则在输出格式中填充“不存在”。不要编造信息。
+        - 如果工控系统文本中不存在任何可提取的业务拓扑结构，则输出“【不存在业务拓扑】”。
+        - 如果工控系统文本中存在可提取的业务拓扑结构，则必须完整提取每一个业务拓扑结构，并按照规定的格式输出，不得遗漏。
+
+        ## 专项技能:
+        - 精准识别业务行为: 能够从复杂的工控系统文本中精准提取业务拓扑，确保分析全面。
+        - 系统化拓扑提取能力: 能够从多个角度分析行为的相互关系，并以清晰的结构整理输出，确保数据的高效利用。
+        - 细致的推理与逻辑梳理: 通过分步推理，层层递进地识别业务行为及其属性，确保最终提取的逻辑严谨且无遗漏。
+
+        ## 处理流程:
+        - 作为工控系统业务拓扑提取大师，你将从提供的工控系统文本中，结合已经提取出的单点设备，运用你的“专项技能”能力精准识别系统中行为主体和行为客体之间发生的行为内容，并细致分析行为内容的行为类型、行为内容、行为目标类型、行为目标参数名称和行为目标参数值
+        - 第一步，你需要一步步思考并推理，从文本中识别业务行为，并明确它们的作用，同时结合已经提取出的单点设备，明确每个业务行为的行为主体和行为客体。
+        - 第二步，你需要一步步思考并推理，各类行为的行为类型，行为类型为读或者写，行为类型是唯一的，确保行为的精准描述。
+        - 第三步，你需要一步步思考并推理，分析行为的行为目标类型，行为目标类型为改变行为客体的输入、改变行为客体的输出或改变行为客体的设定值，行为目标类型是唯一的。
+        - 第四步，你需要一步步思考并推理，分析行为的行为目标参数名称，行为目标参数名称可以是开关状态、温度设定值、输入电压或这其他类似目标参数名称，具体要看文本中的行为是什么样的如果提取不出来，则设置为null。
+        - 第五步，你需要一步步思考并推理，分析行为的行为目标参数值，行为目标参数值可以是开、关、调高、调低或者其他类似目标参数值，具体要看文本中的行为是什么样的，如果提取不出来，则设置为null。
+        - 第六步，你需要一步步思考并推理，结合前五步的分析，系统化提取业务拓扑数据，并整理输出，以支持系统优化与控制策略制定，并且要把提取出的业务拓扑按照输出格式进行输出。
+
     
-    if rag_type == "LightRAG":
-        # 使用基于 LightRAG 的框架
-        from src.run_lightrag_pipeline import RunLightRAGChatbot  # 假设为 LightRAG 创建了一个单独的类
+        ## 输出格式:
+    
+        【行为主体的设备名称】<设备名称>
+        【行为主体的设备类型】<控制器/操作员站/工程师站/被控物理过程/传感器/执行器>
 
-        st.session_state.chatbot = RunLightRAGChatbot(
-            model_type=model_category.lower(),  # 使用提供的模型类别
-            working_dir="lightrag_data",  # LightRAG 工作文件的目录
-            openai_model=openai_model,
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            huggingface_model_name=huggingface_model,
-            huggingface_tokenizer_name=huggingface_model, # 默认为模型名称
-            ollama_model_name=llama_model_path,  # 假设 Ollama 模型具有类似的命名结构
-            ollama_host="http://localhost:11434",  # 示例 Ollama 主机；根据需要调整
-            ollama_embedding_model=ollama_embedding_model,  # 使用提供的嵌入类型
-            data_task=data_task,
-            data_value=data_value,
+        【行为客体的设备名称】<设备名称>
+        【行为客体的设备类型】<控制器/操作员站/工程师站/被控物理过程/传感器/执行器>
 
-            github_access_token=os.getenv("GITHUB_PERSONAL_TOKEN"),
-            ieee_api_key=os.getenv("IEEE_API_KEY"),
-            elsevier_api_key = os.getenv('ELSEVIER_API_KEY'),
-            pinecone_api_key=os.getenv("PINECONE_API_KEY"),
-            huggingface_api_key = os.getenv('HUGGINGFACE_API_KEY'),
-        )
-
-        # 设置 LightRAG 组件
-        st.session_state.chatbot.setup_data()
-        st.session_state.chatbot.setup_lightrag()
-    elif rag_type == "LangChain":
-        
-        # 使用初始的基于 RunChatbot 的框架
-        from src.run_rag_pipeline import RunChatbot
-       # LangChain的聊天机器人构建        
-       # """初始化或重新初始化聊天机器人实例。"""
-        st.session_state.chatbot = RunChatbot(
-            model_type=model_type,
-            api_key=os.getenv("OPENAI_API_KEY"),
-            use_rag=bool(data_task),
-            data_task=data_task,
-            data_value=data_value,
-            vector_store_type=vector_store_type,
-            embedding_type=embedding_type,
-            temperature=0.7,
-            github_access_token=os.getenv("GITHUB_PERSONAL_TOKEN"),
-            ieee_api_key=os.getenv("IEEE_API_KEY"),
-            elsevier_api_key = os.getenv('ELSEVIER_API_KEY'),
-            pinecone_api_key=os.getenv("PINECONE_API_KEY"),
-            huggingface_api_key = os.getenv('HUGGINGFACE_API_KEY'),
-            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
-            deepseek_model = deepseek_model,
-            model=openai_model,
-            model_path=llama_model_path,
-            model_name=huggingface_model,
-        )
-        # 分割文本块
-        st.session_state.chatbot.setup_data()
-        st.session_state.chatbot.setup_vector_store()
-        st.session_state.chatbot.setup_llm_pipeline()
+        【行为类型】<读/写>
+        【行为内容】<提取出的行为内容>
+        【行为目标类型】<改变行为客体的输入/改变行为客体的输出/改变行为客体的设定值>
+        【行为目标参数名称】<开关状态/温度设定值/输入电压/其他类似目标参数名称.../null>
+        【行为目标参数值】<开/关/调高/调低/其他类似目标参数值.../null>
 
 
-    elif rag_type == "None" or data_task is None or data_value is None:
-        
-        # 使用初始的基于 RunChatbot 的框架
-        from src.run_rag_pipeline import RunChatbot
-                
-        # """初始化或重新初始化聊天机器人实例。"""
-        st.session_state.chatbot = RunChatbot(
-            model_type=model_type,
-            api_key=os.getenv("OPENAI_API_KEY"),
-            use_rag=bool(data_task),
-            data_task=data_task,
-            data_value=data_value,
-            vector_store_type=vector_store_type,
-            embedding_type=embedding_type,
-            temperature=0.7,
-            github_access_token=os.getenv("GITHUB_PERSONAL_TOKEN"),
-            ieee_api_key=os.getenv("IEEE_API_KEY"),
-            elsevier_api_key = os.getenv('ELSEVIER_API_KEY'),
-            pinecone_api_key=os.getenv("PINECONE_API_KEY"),
-            huggingface_api_key = os.getenv('HUGGINGFACE_API_KEY'),
-            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
-            deepseek_model = deepseek_model,
-            model=openai_model,
-            model_path=llama_model_path,
-            model_name=huggingface_model,
-        )
-        st.session_state.chatbot.setup_llm_pipeline()
-        
+    """
+)
+
+chat_prompt_3 = PromptTemplate(
+    input_variables = ["text","action"],
+    template = """
+
+    这是**工控系统文本**，**所有分析都基于此文本**：{text}
+    这是已经提取出的业务拓扑：{action}
+
+    ## 角色简介:
+    - 角色: 工控系统业务逻辑提取大师
+    - 语言: 中文
+    - 描述: 专注于工控系统中的业务（行为）逻辑提取，精准分析行为的触发原因、触发类型及触发结果，确保完整理解系统的控制流程和反馈机制，为优化系统控制策略提供关键数据支持。
+
+    ## 核心目标:
+    - 第一步，明确业务逻辑分析的目标和范围。你需要结合工控系统文本和已经提取出的业务拓扑，识别每个业务拓扑中业务行为的触发原因、触发类型及触发结果。 
+    - 第二步，识别行为的触发原因，是什么导致了该行为的发生。
+    - 第二步，识别行为的触发类型，明确系统中的业务逻辑是周期式（定期执行的控制行为）还是中断式（由事件或特定条件触发的行为），触发类型唯一。
+    - 第三步，识别行为的触发结果，该行为导致了什么结果。
+    - 第五步，结合前三步的分析，系统化提取业务逻辑，并整理输出，以支持系统优化与控制策略制定。
+
+    ## 约束条件:
+    - 推理过程必须逻辑严密。确保对每个行为的原因和结果分析层层递进，保证业务逻辑的完整性和准确性。
+    - 触发类型识别需精准。确保正确区分周期式和中断式触发方式，避免误分类。
+    - 确保业务逻辑的可操作性。所有提取的信息需具有实际指导意义，确保可用于优化控制策略。
+    - 如果按照输出格式表述的时候，有表格对应参数不存在或者提取不来，用null进行占位，不要空着
+
+
+
+    ## 专项技能:
+    - 精准识别行为的触发类型: 能够从复杂的工控系统文本中精准提取周期式触发和中断式触发的业务逻辑，确保逻辑分析全面准确。
+    - 系统化逻辑提取能力: 能够从多个角度分析行为的上下文，并以清晰的结构整理输出，确保数据的高效利用。
+    - 细致的推理与逻辑梳理: 通过分步推理，层层递进地识别业务逻辑及其触发机制，确保最终提取的逻辑严谨且无遗漏。
+
+    ## 处理流程:
+    - 作为工控系统业务逻辑提取大师，你将从提供的工控系统文本中，结合已经提取出的业务拓扑，运用你的“专项技能”能力分析行为上下文的触发原因、触发类型及触发结果。
+    - 第一步，你需要一步步思考并推理，从文本中识别行为的触发原因，是什么导致了该行为的发生。
+    - 第二步，你需要一步步思考并推理，详细识别行为的触发类型，明确系统中的业务逻辑是周期式（定期执行的控制行为）还是中断式（由事件或特定条件触发的行为），触发类型是唯一的。
+    - 第三步，你需要一步步思考并推理，识别行为的触发结果，该行为导致了什么结果。
+    - 第四步，你需要一步步思考并推理，结合以上三步你的推理过程，综合整理业务逻辑数据，系统化提取并确保数据完整，以便后续优化系统控制逻辑，并且将提取出的业务逻辑按输出格式表述出来。
+    请注意：**如果按照输出格式表述的时候，有表格对应参数不存在或者提取不来，用null进行占位，不要空着**
+
+    
+
+    ## 输出格式:
+| **行为主体的设备名称** | **行为主体的设备类型** | **行为客体的设备名称** | **行为客体的设备类型** | **行为类型** | **行为内容** | **行为目标类型** | **行为目标参数名称** | **行为目标参数值** | **行为触发原因** | **行为触发类型** | **行为触发结果** |
+|-----------------------|------------------------|------------------------|------------------------|--------------|--------------|------------------|----------------------|---------------------|-------------------|-------------------|-------------------|
+| <设备名称>            | <控制器/操作员站/工程师站/被控物理过程/传感器/执行器> | <设备名称>            | <控制器/操作员站/工程师站/被控物理过程/传感器/执行器> | <读/写>       | <提取出的行为内容> | <改变行为客体的输入/改变行为客体的输出/改变行为客体的设定值> | <开关状态/温度设定值/输入电压/其他类似目标参数名称...> | <开/关/调高/调低/其他类似目标参数值...> | <触发该行为的原因> | <周期式/中断式>   | <该行为的结果>   |
+
+
+### 说明：
+1. **行为主体的设备名称**：指执行该行为的设备名称。
+2. **行为主体的设备类型**：行为主体的设备类型，如控制器、传感器等。
+3. **行为客体的设备名称**：受该行为影响的设备名称。
+4. **行为客体的设备类型**：行为客体的设备类型。
+5. **行为类型**：如读/写操作。
+6. **行为内容**：具体的行为描述。
+7. **行为目标类型**：操作目标的类型，例如改变输入、输出或设定值。
+8. **行为目标参数名称**：具体的控制参数名称，如“阀门开关状态”、“温度设定值”等。
+9. **行为目标参数值**：控制参数的值，如“开”、“关”、“调高”、“调低”等。
+10. **行为触发原因**：导致该行为触发的条件或事件。
+11. **行为触发类型**：周期式或中断式，描述行为触发的方式。
+12. **行为触发结果**：行为执行后的结果描述。
+
+### 输出示例：
+
+
+| **行为主体的设备名称** | **行为主体的设备类型** | **行为客体的设备名称** | **行为客体的设备类型** | **行为类型** | **行为内容** | **行为目标类型** | **行为目标参数名称** | **行为目标参数值** | **行为触发原因** | **行为触发类型** | **行为触发结果** |
+|-----------------------|------------------------|------------------------|------------------------|--------------|--------------|------------------|----------------------|---------------------|-------------------|-------------------|-------------------|
+| 控制器                 | 控制器                 | 电动阀门                | 执行器                 | 写           | 发送开启指令   | 改变行为客体的开关状态 | 阀门开关状态           | 开                 | 系统压力超出阈值    | 中断式            | 阀门开启，流量增加，压力降低 |
+| 操作员站               | 操作员站               | 电动泵                  | 执行器                 | 写           | 调整功率       | 改变行为客体的功率设定值 | 功率设定值             | 调高               | 流量低于设定值      | 中断式            | 流量恢复，系统稳定  |
+| 控制器                 | 控制器                 | 电动泵                  | 执行器                 | 写           | 调整温度       | 改变行为客体的设定值  | 温度设定值             | null            | 温度超出设定范围    | 中断式            | 温度设定调整，恢复正常 |
+| 传感器                 | 传感器                 | 控制器                  | 控制器                 | 读           | 读取流量数据   | 改变行为客体的输入    | 流量                   | null            | 流量低于预定值      | 周期式            | 控制器调整输出设定  |
+| 工程师站               | 工程师站               | 电动阀门                | 执行器                 | 写           | 修改阀门位置   | 改变行为客体的设定值  | 阀门位置               | 调整               | 未知故障触发      | 中断式            | 阀门位置调整，恢复系统状态 |
+| 控制器                 | 控制器                 | 被控物理过程            | 被控物理过程           | 写           | 调节温度       | 改变行为客体的设定值  | 温度设定值             | null            | 温度过高触发       | 中断式            | 温度恢复正常，系统恢复 |
+
+
+
+    """
+)
+
+# 使用jieba进行分词
+def chinese_tokenizer(text):
+    return list(jieba.cut(text, cut_all=False))
         
 def save_uploaded_files(uploaded_files):
     """Save uploaded files and return their paths."""
@@ -339,314 +444,414 @@ def save_uploaded_files(uploaded_files):
     return session_folder, file_paths
 
 
-# Sidebar for RAG Input Options
-# st.sidebar.header("Additional Input Options")
-# data_icon = st.sidebar.radio(
-#     "Select Input Type",
-#     ["None", "Upload Document", "Web Link", "GitHub Repository", "Research Papers Topic", "Solve GitHub Issues"],
-#     help="Choose the type of additional input to enhance the chatbot's knowledge base.",
-# )
 
-st.sidebar.header("Additional Input Options")
-data_icon = st.sidebar.radio(
-    "Select Input Type",
-    ["None", "Upload Document"],
-    help="Choose the type of additional input to enhance the chatbot's knowledge base.",
+# 侧边栏：大模型参数调节
+st.sidebar.header("Large Language Model Parameters")
+
+temperature = st.sidebar.slider("Choose temperature", 0.0, 1.5, 1.0)
+
+top_p = st.sidebar.slider("Choose top_p", 0.0, 1.0, 0.9)
+     
+if st.sidebar.button("Update LLM"):
+    # 创建新的 LLM 实例
+    st.session_state.llm_pipeline = LLMPipeline(model_type="deepseek", temperature=temperature, top_p=top_p)
+    st.session_state.temperature = temperature
+    st.session_state.top_p = top_p
+    st.session_state.llm_ready = True
+
+
+
+
+# 获得所有知识库名称
+knowledgebase_collection = db["knowledgebase"]  # 使用集合 knowledgebase
+# 获取所有 collection_name 字段
+collection_names = knowledgebase_collection.find({}, {"collection_name": 1, "_id": 0})
+# 提取 collection_name 字段
+collection_name_list = [doc["collection_name"] for doc in collection_names]
+# 侧边栏：向量知识库参数调节
+st.sidebar.header("Vector KnowledgeBase Parameters")
+
+knowledgebase = st.sidebar.selectbox(
+    "Select KnowledgeBase",
+    collection_name_list
 )
 
-uploaded_files = None
-data_value = None
-data_task = None
-rag_ready = False
+semantic_based = st.sidebar.slider("Choose The proportion of semantic-based retrieval", 0.0, 1.0, 0.5)
+keyword_based = st.sidebar.slider("The proportion of keyword-based retrieval", 0.0, 1.0, 1.0 - semantic_based, disabled = True)
 
-if data_icon == "Upload Document":
-    uploaded_files = st.sidebar.file_uploader("Upload Files", accept_multiple_files=True)
-    if uploaded_files:
-        data_task = "file"
-        session_folder, data_value = save_uploaded_files(uploaded_files)
-        st.session_state["session_folder"] = session_folder  # Store the folder path for cleanup
-        
-elif data_icon == "Web Link":
-    web_link = st.sidebar.text_input("Enter Web Link (e.g., 'https://example.com')")
-    if web_link.startswith("http://") or web_link.startswith("https://"):
-        data_task = "url"
-        data_value = web_link
-        
-elif data_icon == "GitHub Repository":
-    github_repo = st.sidebar.text_input("Enter GitHub Repo URL (e.g., 'https://github.com/user/repo.git')")
-    if github_repo.startswith("http://") or github_repo.startswith("https://"):
-        data_task = "github_repo"
-        data_value = github_repo
-        
-elif data_icon == "Research Papers Topic":
-    research_topic = st.sidebar.text_input("Enter Research Paper Topic")
-    if research_topic.strip():
-        data_task = "research_papers"
-        data_value = research_topic
-        
-elif data_icon == "Solve GitHub Issues":
-    github_issues_repo = st.sidebar.text_input("Enter GitHub Repo for Issues (e.g., 'user/repo')")
-    if github_issues_repo.strip():
-        data_task = "github_issues"
-        data_value = github_issues_repo
-
-    
-# 侧边栏：机器学习模型
-# st.sidebar.header("Large Language Models")
-# model_category = st.sidebar.radio(
-#     "Select a Model Category:",
-#     ["OpenAI", "HuggingFace", "Ollama", "DeepSeek"],
-#     help="Choose the category of machine learning model you'd like to use.",
-# )
-
-# 侧边栏：机器学习模型
-st.sidebar.header("Large Language Models")
-model_category = st.sidebar.radio(
-    "Only Ollama is currently available:",
-    ["Ollama"],
-    help="Choose the category of machine learning model you'd like to use.",
-)
-
-openai_model = None
-huggingface_model_path = None
-ollama_model_path = None
-model_ready = False  # 标志位，用于确认模型准备就绪
-rag_type = None
-deepseek_model = None
-
-# 模型选择
-if model_category == "OpenAI":
-    openai_model = st.sidebar.selectbox(
-        "Choose an OpenAI Model:",
-        ["Select a Model", "gpt-4o", "gpt-4-turbo", "gpt-4o-mini", "o1", "o1-mini", "gpt-3.5-turbo"],
-        help="Select an OpenAI model to use."
-    )
-    if openai_model == "Select a Model": # 确保用户选择有效的模型
-        openai_model = None
-        st.sidebar.warning("Please select a valid OpenAI model.")
-    else:
-        st.sidebar.success(f"Selected OpenAI Model: `{openai_model}`")
-        model_ready = True
-
-elif model_category == "DeepSeek":
-    deepseek_model = st.sidebar.text_input(
-        "Enter DeepSeek Model:",
-        placeholder="e.g., deepseek-chat",
-        help="Select a DeepSeek model to use"
-    )
-    if deepseek_model.strip() in ["deepseek-chat", "deepseek-coder"]:  # 确保用户已提供输入
-        model_ready = True
-        st.sidebar.success(f"Selected DeepSeek Model: `{deepseek_model}`")
-    else:
-        deepseek_model = None
-        st.sidebar.warning("Please provide a valid DeepSeek model.")
-        
-elif model_category == "HuggingFace":
-    huggingface_model_path = st.sidebar.text_input(
-        "Enter HuggingFace Model Path:",
-        placeholder="e.g., meta-llama/Llama-2-7b-hf",
-        help="Provide the path to a HuggingFace model from the model hub."
-    )
-    if huggingface_model_path.strip(): # 确保用户已提供输入
-        model_ready = True
-        st.sidebar.success(f"Selected HuggingFace Model Path: `{huggingface_model_path}`")
-    else:
-        huggingface_model_path = None
-        st.sidebar.warning("Please provide a valid HuggingFace model path.")
-
-elif model_category == "Ollama":
-    ollama_model_path = st.sidebar.text_input(
-        "Enter Ollama Model Path:",
-        placeholder="e.g., ollama/gpt-j",
-        help="Provide the path to an Ollama model."
-    )
-    if ollama_model_path.strip():  # 确保用户已提供输入
-        model_ready = True
-        st.sidebar.success(f"Selected Ollama Model Path: `{ollama_model_path}`")
-    else:
-        ollama_model_path = None
-        st.sidebar.warning("Please provide a valid Ollama model path.")
-        
-
-# 执行 RAG 或初始化模型按钮
-if (data_task and data_value) or model_ready:  # 确保 RAG 或模型输入已准备好
-    rag_type = st.sidebar.selectbox(
-        "Choose RAG Framework:",
-        ["None", "LangChain", "LightRAG"],
-        help="Select the framework for Retrieval-Augmented Generation."
-    )
-    # LightRAG 模式的子类别
-    light_rag_mode = None
-    if rag_type == "LightRAG":
-        with st.sidebar.expander("Configure LightRAG Mode", expanded=False):
-            st.markdown(
-                "<small style='color: gray;'>Select a mode for LightRAG query execution:</small>",
-                unsafe_allow_html=True
+if st.sidebar.button("Update KnowledgeBase"):
+    vector_store_manager = VectorStoreManager(
+                vector_store_type="chroma",
+                collection_name= knowledgebase,
+                embedding_model_name = "nomic-embed-text",
+                #embedding_model_name="llama3",
+                embedding_type="llama"
             )
-            light_rag_mode = st.selectbox(
-                "LightRAG Mode:",
-                ["naive", "local", "global", "hybrid", "mix"],
-                help=(
-                    "Modes available for LightRAG:\n"
-                    "- naive: Basic retrieval\n"
-                    "- local: Local search\n"
-                    "- global: Global search\n"
-                    "- hybrid: Combines local and global search\n"
-                    "- mix: Combines knowledge graph and vector search"
-                ),
+
+    retriever = vector_store_manager.as_retriever()
+
+
+    # 从Chroma 取出所有数据，并转化为Document 格式
+    chroma_docs = vector_store_manager.vector_store.get()
+    bm25_docs = [
+        Document(page_content=text, metadata = metadata)
+        for text, metadata in zip(chroma_docs["documents"],chroma_docs["metadatas"])
+    ]
+    bm25_retriever = BM25Retriever.from_documents(
+        bm25_docs,
+        tokenizer = chinese_tokenizer # 显式指定中文分词器
+        )
+    bm25_retriever.k = 5
+
+    # 初始化集成检索器
+    ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, retriever],weights=[keyword_based, semantic_based])
+    st.session_state.retriever = ensemble_retriever
+    st.session_state.knowledgebase = knowledgebase
+    st.session_state.semantic_based = semantic_based
+    st.session_state.keyword_based = keyword_based
+    st.session_state.retriever_ready = True
+   
+
+
+
+
+# 模型准备
+if "llm_pipeline" not in st.session_state:
+    llama_pipeline = LLMPipeline(model_type="deepseek" )
+    st.session_state.llm_pipeline = llama_pipeline
+    st.session_state.temperature = temperature
+    st.session_state.top_p = top_p
+    st.session_state.llm_ready = True
+
+
+
+if st.session_state.llm_ready:
+    st.success(f"LLM has been ready with temperature: {st.session_state.temperature} and top_p: {st.session_state.top_p}.")
+
+
+
+# 检索器设置
+
+
+
+if "retriever" not in st.session_state:
+    vector_store_manager = VectorStoreManager(
+                vector_store_type="chroma",
+                collection_name="thermal_power",
+                embedding_model_name = "nomic-embed-text",
+                #embedding_model_name="llama3",
+                embedding_type="llama"
             )
-    rag_ready = st.sidebar.button("Perform RAG or Initialize Model")
 
-# print(f"Selected OpenAI model: {openai_model}")
-# print(f"Data task: {data_task}, Data value: {data_value}")
-# print(f"RAG type selected: {rag_type}")
+    retriever = vector_store_manager.as_retriever()
 
-# 仅在确认后初始化聊天机器人
-if rag_ready:  # 在继续之前检查两个标志位
-    try:
-        if model_category.lower() == "openai" and not openai_model:
-            st.error("Please select a valid OpenAI model.")
-        elif model_category.lower() == "deepseek" and not deepseek_model:
-            st.error("Please provide a valid DeepSeek model.")
-        elif model_category.lower() == "huggingface" and not huggingface_model_path:
-            st.error("Please provide a valid HuggingFace model path.")
-        elif model_category.lower() == "ollama" and not ollama_model_path:
-            st.error("Please provide a valid Ollama model path.")
-        else:
-            initialize_chatbot(
-                data_task=data_task,
-                data_value=data_value,
-                model_type=model_category.lower(),
-                openai_model=openai_model,
-                llama_model_path=ollama_model_path,
-                huggingface_model=huggingface_model_path,
-                deepseek_model = deepseek_model,
-                rag_type=rag_type,
-            )
-            st.sidebar.success(f"Chatbot initialized with model `{model_category}` and RAG task `{data_task}`, using '{rag_type}.")
-    finally:
-        # 清理上传的文件和文件夹
-        session_folder = st.session_state.get("session_folder")
-        if session_folder and os.path.exists(session_folder):
-            shutil.rmtree(session_folder)  # 删除文件夹及其内容
-            st.session_state.pop("session_folder", None)  # 清除会话状态
-            st.sidebar.info("Temporary files have been cleaned up.")
 
-# 显示消息
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    # 从Chroma 取出所有数据，并转化为Document 格式
+    chroma_docs = vector_store_manager.vector_store.get()
+    bm25_docs = [
+        Document(page_content=text, metadata = metadata)
+        for text, metadata in zip(chroma_docs["documents"],chroma_docs["metadatas"])
+    ]
+    bm25_retriever = BM25Retriever.from_documents(
+        bm25_docs,
+        tokenizer = chinese_tokenizer # 显式指定中文分词器
+        )
+    bm25_retriever.k = 5
 
-# 聊天输入
-if user_prompt := st.chat_input("Your prompt"):
-    st.session_state.messages.append({"role": "user", "content": user_prompt})
-    with st.chat_message("user"):
-        st.markdown(user_prompt)
+    # 初始化集成检索器
+    ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, retriever],weights=[0.5,0.5])
+    st.session_state.retriever = ensemble_retriever
+    st.session_state.knowledgebase = knowledgebase
+    st.session_state.semantic_based = semantic_based
+    st.session_state.keyword_based = keyword_based
+    st.session_state.retriever_ready = True
+
+if st.session_state.retriever_ready:
+    st.success(f"Retriever has been ready with KnowledgeBase: {st.session_state.knowledgebase}, semantic-based: {st.session_state.semantic_based} and keyword-based: {st.session_state.keyword_based}.")
+
+
+# 检索函数
+def retrieve(query, retriever):
+    result = retriever.invoke(query)
+    return {"context":result,"question":query}
+
+# 上传文件(当前只对单个pdf格式文件进行了适配)
+uploaded_files = st.file_uploader("Upload Operational Specifications", accept_multiple_files=True)
+
+if uploaded_files:
+    session_folder, data_value = save_uploaded_files(uploaded_files)
+    st.session_state["session_folder"] = session_folder
+    st.session_state["data_value"] = data_value
+
+    # 文件分割
+    for file in st.session_state.data_value:
+        reader = PdfReader(file)
+        parts = []
+        result= []
+
+        # 去除页头和页尾
+        def visitor_body(text, cm, tm, fontDict, fontSize):
+            y = tm[5]
+            if y>70 and y<770:
+                parts.append(text)
+
+        for i in range(0,len(reader.pages),3):
+            if(i<len(reader.pages)-4):
+                reader.pages[i].extract_text(visitor_text = visitor_body)
+                reader.pages[i+1].extract_text(visitor_text = visitor_body)
+                reader.pages[i+2].extract_text(visitor_text = visitor_body)
+                reader.pages[i+3].extract_text(visitor_text = visitor_body)        
+                result.append("".join(parts))
+                parts.clear()
+            else:
+                reader.pages[len(reader.pages)-3].extract_text(visitor_text = visitor_body)
+                reader.pages[len(reader.pages)-2].extract_text(visitor_text = visitor_body)
+                reader.pages[len(reader.pages)-1].extract_text(visitor_text = visitor_body)
+                result.append("".join(parts))
+                parts.clear()
+                break
+        
+        st.session_state["raw_text"] = result
+        st.session_state["length"] = len(result)
+        st.write(f"The Operational Specification has been split into {len(result)} pieces.")
+
+
+
+
+# 初始化存储结果
+if 'results' not in st.session_state:
+    st.session_state.results = []
+
+
+# 初始化页码
+if "current_page" not in st.session_state:
+    st.session_state.current_page = 0
+
+# 启动的按钮
+if 'clicked' not in st.session_state:
+    st.session_state.clicked = False
+
+def click_button():
+    st.session_state.clicked = True
+
+st.button("Start Extracting", on_click = click_button)
+
+
+# if 'display' not in st.session_state:
+    # st.session_state.display = "### 所有控制行为规则： \n\n "
+
+if st.session_state.clicked:
+    # 开始时间
+    st.session_state.start_time = datetime.now()
+    # 结果文件名
+    unique_filename = f"result_{uuid.uuid4().hex}.md"
+    st.session_state.result_file = f"result/{unique_filename}"
+    my_bar = st.progress(0, text="Progress of Extraction")
+
+    progress = st.session_state.length * 3
+    current = 0
 
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        sources_placeholder = st.empty()
+        device_placeholder = st.empty()
+        topology_placeholder = st.empty()
+        rule_placeholder = st.empty()
+        results_placeholder = st.empty()
+
+
         full_response = ""
 
-        try:
-            if not st.session_state.chatbot:
-                # initialize_chatbot()
-                initialize_chatbot(
-                    data_task=data_task,
-                    data_value=data_value,
-                    model_type=model_category.lower(),
-                    openai_model=openai_model,
-                    llama_model_path=ollama_model_path,
-                    huggingface_model=huggingface_model_path,
-                    deepseek_model = deepseek_model,
-                    rag_type=rag_type,
-                )
-            if rag_type == "LightRAG":
-                answer = st.session_state.chatbot.chat(f"Question: {user_prompt}", mode = light_rag_mode)
-                sources = []  # LightRAG 没有来源
-            else:
-                result = st.session_state.chatbot.chat(f"Question: {user_prompt}", with_sources=True)
+    for i in range(st.session_state.length):
 
-                answer = result.get("result", "Sorry, I couldn't process that.")
-                sources = result.get("sources", [])
+        retrieved_data = retrieve(st.session_state.raw_text[i], st.session_state.retriever)
+        formatted_prompt = chat_prompt_1.format(
+            context=retrieved_data["context"],
+            question=retrieved_data["question"]
+        )
+        response = st.session_state.llm_pipeline.run(formatted_prompt)
+        # 提取出的单点设备
+        temp_result_1 = response['response']['result'].content
+        device_placeholder.markdown(f"\n\n**piece{i+1}单点设备:**\n"+temp_result_1)
+        current += 1
+        my_bar.progress(current/progress, text = f"Progress of Extraction:{current/progress*100:.2f}%")
 
-                if isinstance(answer, str):
-                    answer = answer
-                elif hasattr(answer, 'content'):
-                    answer = answer.content
-                    # sources = result.additional_kwargs.get('sources', [])
-                else:
-                    answer = answer['result'].content
+        # 提取业务拓扑, 输入：工控系统文本和单点设备
+        formatted_prompt = chat_prompt_2.format(
+            text=st.session_state.raw_text[i],
+            device=temp_result_1
+        )
+        response = st.session_state.llm_pipeline.run(formatted_prompt)
+        temp_result_2 = response['response']['result'].content
+        topology_placeholder.markdown(f"\n\n**piece{i+1}业务拓扑:**\n"+temp_result_2)
+        current += 1
+        my_bar.progress(current/progress, text = f"Progress of Extraction:{current/progress*100:.2f}%")
+
+        # 提取业务逻辑，输入：工控系统文本和业务拓扑
+        formatted_prompt = chat_prompt_3.format(
+            text=result[i],
+            action=temp_result_2
+        )
+        response = st.session_state.llm_pipeline.run(formatted_prompt)
+        final_result = response['response']['result'].content
+        rule_placeholder.markdown(f"\n\n**piece{i+1}控制行为逻辑:**\n"+final_result)
+        current += 1
+        my_bar.progress(current/progress, text = f"Progress of Extraction:{current/progress*100:.2f}%")
+        # 立即写入文件
+        with open(f"result/{unique_filename}", "a", encoding="utf-8") as file:
+            file.write(str(final_result) + "\n")
+        # st.session_state.results.append(final_result) 
+        # st.session_state.display += final_result
+        # results_placeholder.markdown(st.session_state.display)
+
+    
+    # 结束时间
+    st.session_state.end_time = datetime.now()
+
+    # 要插入的数据
+    data = {
+        "start_time":st.session_state.start_time,
+        "end_time":st.session_state.end_time,
+        "source_specification":st.session_state.data_value,
+        "pieces":st.session_state.length,
+        "LLM_parameters":{
+            "name":"gpt-4o-mini",
+            "temperature":st.session_state.temperature,
+            "top_p":st.session_state.top_p
+        },
+        "Knowledgebase_parameters":{
+            "knowledgebase_name":st.session_state.knowledgebase,
+            "semantic_based":st.session_state.semantic_based,
+            "keyword_based":st.session_state.keyword_based,
+            "embedding_model_name":"nomic-embed-text"
+
+        },
+        "result_file":st.session_state.result_file
+    }
+
+    chats_collection.insert_one(data)
+    st.success(f"Extraction has been finished and result is saved to {st.session_state.result_file}")
+
+    # 取消点击状态
+    st.session_state.clicked = False
+    # 消除文件相关内容的缓存
+    st.session_state["session_folder"] = ''
+    st.session_state["data_value"] = ''
+    st.session_state["raw_text"] = ''
+    st.session_state["length"] = ''
+
+
+
+
+
+# # 聊天输入
+# if user_prompt := st.chat_input("Your prompt"):
+#     st.session_state.messages.append({"role": "user", "content": user_prompt})
+#     with st.chat_message("user"):
+#         st.markdown(user_prompt)
+
+#     with st.chat_message("assistant"):
+#         message_placeholder = st.empty()
+#         sources_placeholder = st.empty()
+#         full_response = ""
+
+#         try:
+#             if not st.session_state.chatbot:
+#                 # initialize_chatbot()
+#                 initialize_chatbot(
+#                     data_task=data_task,
+#                     data_value=data_value,
+#                     model_type=model_category.lower(),
+#                     openai_model=openai_model,
+#                     llama_model_path=ollama_model_path,
+#                     huggingface_model=huggingface_model_path,
+#                     deepseek_model = deepseek_model,
+#                     rag_type=rag_type,
+#                 )
+#             if rag_type == "LightRAG":
+#                 answer = st.session_state.chatbot.chat(f"Question: {user_prompt}", mode = light_rag_mode)
+#                 sources = []  # LightRAG 没有来源
+#             else:
+#                 result = st.session_state.chatbot.chat(f"Question: {user_prompt}", with_sources=True)
+
+#                 answer = result.get("result", "Sorry, I couldn't process that.")
+#                 sources = result.get("sources", [])
+
+#                 if isinstance(answer, str):
+#                     answer = answer
+#                 elif hasattr(answer, 'content'):
+#                     answer = answer.content
+#                     # sources = result.additional_kwargs.get('sources', [])
+#                 else:
+#                     answer = answer['result'].content
                  
-        
-            # 显示助手的回复
-            for token in answer:
-                full_response += token
-                message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
+
+#             # 显示助手的回复
+#             for token in answer:
+#                 full_response += token
+#                 message_placeholder.markdown(full_response + "▌")
+#             message_placeholder.markdown(full_response)
 
 
-            ## Display sources if available
-            # if sources:
-            #     sources_placeholder.markdown("**Sources:**")
-            #     unique_sources = list(set(sources))  # Remove duplicates by converting to a set and back 
-            #     source_links = []
-            #     for idx, source in enumerate(unique_sources, start=1):
-            #         # Check if the source is a valid URL and display it as a clickable link
-            #         if isinstance(source, str):
-            #             if source.startswith("http"):
-            #                 source_links.append(f"{idx}. [{source}]({source})")
-            #             else:
-            #                 source_links.append(f"{idx}. {source}")
-            #         else:
-            #             # Handle non-string sources (e.g., dicts or objects)
-            #             source_links.append(f"{idx}. {str(source)}")
-            #     # Combine all source links and display them
-            #     sources_placeholder.markdown("\n".join(source_links))
+#             ## Display sources if available
+#             # if sources:
+#             #     sources_placeholder.markdown("**Sources:**")
+#             #     unique_sources = list(set(sources))  # Remove duplicates by converting to a set and back 
+#             #     source_links = []
+#             #     for idx, source in enumerate(unique_sources, start=1):
+#             #         # Check if the source is a valid URL and display it as a clickable link
+#             #         if isinstance(source, str):
+#             #             if source.startswith("http"):
+#             #                 source_links.append(f"{idx}. [{source}]({source})")
+#             #             else:
+#             #                 source_links.append(f"{idx}. {source}")
+#             #         else:
+#             #             # Handle non-string sources (e.g., dicts or objects)
+#             #             source_links.append(f"{idx}. {str(source)}")
+#             #     # Combine all source links and display them
+#             #     sources_placeholder.markdown("\n".join(source_links))
 
 
 
-            # 显示并格式化来源
-            formatted_sources = ""
-            if sources:
-                formatted_sources = "\n\n**Sources:**\n"
-                unique_sources = list(set(sources))
-                for idx, source in enumerate(unique_sources, start=1):
-                    if isinstance(source, str):
-                        if source.startswith("http"):
-                            formatted_sources += f"{idx}. [{source}]({source})\n"
-                        else:
-                            formatted_sources += f"{idx}. {source}\n"
-                    else:
-                        formatted_sources += f"{idx}. {str(source)}\n"
-                sources_placeholder.markdown(formatted_sources)
+#             # 显示并格式化来源
+#             formatted_sources = ""
+#             if sources:
+#                 formatted_sources = "\n\n**Sources:**\n"
+#                 unique_sources = list(set(sources))
+#                 for idx, source in enumerate(unique_sources, start=1):
+#                     if isinstance(source, str):
+#                         if source.startswith("http"):
+#                             formatted_sources += f"{idx}. [{source}]({source})\n"
+#                         else:
+#                             formatted_sources += f"{idx}. {source}\n"
+#                     else:
+#                         formatted_sources += f"{idx}. {str(source)}\n"
+#                 sources_placeholder.markdown(formatted_sources)
                 
                                             
-            # Save the response to session and MongoDB
-            # st.session_state.messages.append({"role": "assistant", "content": full_response})
+#             # Save the response to session and MongoDB
+#             # st.session_state.messages.append({"role": "assistant", "content": full_response})
             
-            # 将完整的回复（包括来源）保存到会话状态
-            st.session_state.messages.append({
-                "role": "assistant", 
-                # "content": full_response + formatted_sources if formatted_sources else full_response,
-                "content": full_response,
-                "sources": sources  # Store sources separately for future reference
-            })
-            chats_collection.insert_one(
-                {
-                    "question": user_prompt,
-                    "answer": full_response,
-                    "sources": sources,
-                    "data_task": data_task,
-                    "data_value": data_value,
-                }
-            )
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-            logger.error(f"Error: {e}")
+#             # 将完整的回复（包括来源）保存到会话状态
+#             st.session_state.messages.append({
+#                 "role": "assistant", 
+#                 # "content": full_response + formatted_sources if formatted_sources else full_response,
+#                 "content": full_response,
+#                 "sources": sources  # Store sources separately for future reference
+#             })
+#             chats_collection.insert_one(
+#                 {
+#                     "question": user_prompt,
+#                     "answer": full_response,
+#                     "sources": sources,
+#                     "data_task": data_task,
+#                     "data_value": data_value,
+#                 }
+#             )
+#         except Exception as e:
+#             st.error(f"An error occurred: {e}")
+#             logger.error(f"Error: {e}")
 
-# 清除聊天历史
-if st.sidebar.button("Clear Chat History"):
-    st.session_state.messages = []
-    chats_collection.delete_many({})
-    st.sidebar.success("Chat history cleared.")
+# # 清除聊天历史
+# if st.sidebar.button("Clear Chat History"):
+#     st.session_state.messages = []
+#     chats_collection.delete_many({})
+#     st.sidebar.success("Chat history cleared.")
