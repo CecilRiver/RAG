@@ -9,7 +9,7 @@
 - 支持 OpenAI、DeepSeek、HuggingFace、Ollama 等模型
 - 设备信息、业务拓扑、控制逻辑三类抽取结果展示
 - MongoDB 保存对话历史与知识库信息
-- 提供消融实验脚本（`ablation_study.py`）
+- 提供消融实验脚本（`scripts/ablation_study.py`）
 - Streamlit Web 界面，支持 Docker 部署
 
 ## 技术栈
@@ -25,11 +25,12 @@
 ```
 app.py                        Streamlit 主界面
 streamlit_app.py              带登录页的示例界面
-ablation_study.py             消融实验
+history.py / knowledge.py     历史记录与知识库页面
 src/llm/                      各模型封装与 LLM 管线
 src/rag/                      文档加载、切分、向量库、爬虫
 src/run_rag_pipeline.py       RAG 流程编排
 src/run_lightrag_pipeline.py  LightRAG 流程编排
+scripts/                      示例、测试与消融实验脚本
 config.yaml                   管线配置
 .env.example                  环境变量示例
 Dockerfile / render.yaml      部署配置
@@ -72,6 +73,6 @@ docker run --env-file .env -p 8501:8501 rag-app
 
 ## 说明
 
-- `uploads/`、`chroma_db/`、`lightrag_data/`、`result/`、`references/` 等数据目录不随仓库提供，运行时生成。
+- `uploads/`、`knowledge/`、`chroma_db/`、`lightrag_data/`、`result/`、`references/` 等数据目录不随仓库提供，运行时生成。
 - 请勿把 `.env` 或 API Key 提交到仓库。
 - `streamlit_app.py` 中的默认登录账号仅用于本地演示。

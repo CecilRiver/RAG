@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from src.llm.llm_pipeline import LLMPipeline
 from src.rag.vector_store import VectorStoreManager
 from langchain_community.retrievers import BM25Retriever

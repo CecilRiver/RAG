@@ -20,6 +20,7 @@ node_modules/
 
 # 运行时数据与索引
 /uploads/
+/knowledge/
 /chroma_db/
 /lightrag_data/
 /references/

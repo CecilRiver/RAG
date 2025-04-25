@@ -148,7 +148,7 @@ def logout():
 # Page configuration
 page1 = st.Page("app.py", title="Extraction")
 page2 = st.Page("history.py", title="Result")
-page3 = st.Page("Knowledge.py", title="KnowledgeBase")
+page3 = st.Page("knowledge.py", title="KnowledgeBase")
 
 # Navigation based on login state
 if not st.session_state.logged_in:
@@ -201,7 +201,7 @@ pg.run()
 # # 页面配置
 # page1 = st.Page("app.py", title="Extraction")
 # page2 = st.Page("history.py", title="Result")
-# page3 = st.Page("Knowledge.py", title="KnowledgeBase")
+# page3 = st.Page("knowledge.py", title="KnowledgeBase")
 
 # # 默认只有login页面
 # if not st.session_state.logged_in:
@@ -222,5 +222,5 @@ pg.run()
 
 # import streamlit as st
 
-# pg = st.navigation([st.Page("app.py", title="Extraction"),st.Page("history.py", title="Result"),st.Page("Knowledge.py", title="KnowledgeBase")])
+# pg = st.navigation([st.Page("app.py", title="Extraction"),st.Page("history.py", title="Result"),st.Page("knowledge.py", title="KnowledgeBase")])
 # pg.run()
