@@ -30,22 +30,22 @@
 # print(response.data[0].embedding)
 
 
-# from langchain_ollama import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings
 
-# embed = OllamaEmbeddings(
-#     model="nomic-embed-text"
-# )
+embed = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
-# input_text = "The meaning of life is 42"
-# vector = embed.embed_query(input_text)
-# input_text = "The meaning of life is 43"
-# vector_1 = embed.embed_query(input_text)
-# print(vector[:3])
-# print(vector_1[:3])
-# print(len(vector))
-# print(len(vector_1))
-# print(vector)
-# print(vector_1)
+input_text = "The meaning of life is 42"
+vector = embed.embed_query(input_text)
+input_text = "The meaning of life is 43"
+vector_1 = embed.embed_query(input_text)
+print(vector[:3])
+print(vector_1[:3])
+print(len(vector))
+print(len(vector_1))
+print(vector)
+print(vector_1)
 
 # name = 'Lemon'
 # age = 18
@@ -507,35 +507,35 @@
 #         break
 
 
-from PyPDF2 import PdfReader
+# from PyPDF2 import PdfReader
 
-reader = PdfReader(r"C:\Users\ROOT\Desktop\1dtapbjdq18l9v811g-已解锁.pdf")
-parts = []
-result= []
+# reader = PdfReader(r"C:\Users\ROOT\Desktop\1dtapbjdq18l9v811g-已解锁.pdf")
+# parts = []
+# result= []
 
-# 去除页头和页尾
-def visitor_body(text, cm, tm, fontDict, fontSize):
-    y = tm[5]
-    if y>70 and y<770:
-        parts.append(text)
+# # 去除页头和页尾
+# def visitor_body(text, cm, tm, fontDict, fontSize):
+#     y = tm[5]
+#     if y>70 and y<770:
+#         parts.append(text)
 
-for i in range(0,len(reader.pages),3):
-    if(i<len(reader.pages)-4):
-        reader.pages[i].extract_text(visitor_text = visitor_body)
-        reader.pages[i+1].extract_text(visitor_text = visitor_body)
-        reader.pages[i+2].extract_text(visitor_text = visitor_body)
-        reader.pages[i+3].extract_text(visitor_text = visitor_body)        
-        result.append("".join(parts))
-        parts.clear()
-    else:
-        reader.pages[len(reader.pages)-3].extract_text(visitor_text = visitor_body)
-        reader.pages[len(reader.pages)-2].extract_text(visitor_text = visitor_body)
-        reader.pages[len(reader.pages)-1].extract_text(visitor_text = visitor_body)
-        result.append("".join(parts))
-        parts.clear()
-        break
+# for i in range(0,len(reader.pages),3):
+#     if(i<len(reader.pages)-4):
+#         reader.pages[i].extract_text(visitor_text = visitor_body)
+#         reader.pages[i+1].extract_text(visitor_text = visitor_body)
+#         reader.pages[i+2].extract_text(visitor_text = visitor_body)
+#         reader.pages[i+3].extract_text(visitor_text = visitor_body)        
+#         result.append("".join(parts))
+#         parts.clear()
+#     else:
+#         reader.pages[len(reader.pages)-3].extract_text(visitor_text = visitor_body)
+#         reader.pages[len(reader.pages)-2].extract_text(visitor_text = visitor_body)
+#         reader.pages[len(reader.pages)-1].extract_text(visitor_text = visitor_body)
+#         result.append("".join(parts))
+#         parts.clear()
+#         break
 
-print(len(result))
-print(result[0])
-print("-------------------------------------------------------------------------------------------")
-print(result[1])
+# print(len(result))
+# print(result[0])
+# print("-------------------------------------------------------------------------------------------")
+# print(result[1])

@@ -332,16 +332,18 @@
 
 
 # quickStart.py
-import streamlit as st
+# import streamlit as st
 
-docs_file = r"C:\Users\ROOT\Desktop\project\RAG\result\result_d257a8f51e104b7496ee2495043e587f.md"
+# docs_file = r"C:\Users\ROOT\Desktop\project\RAG\result\result_d257a8f51e104b7496ee2495043e587f.md"
 
-def read_markdown_file(filepath):
-    with open(filepath, 'r', encoding='utf-8') as f:
-        return f.read()
+# def read_markdown_file(filepath):
+#     with open(filepath, 'r', encoding='utf-8') as f:
+#         return f.read()
 
-text = read_markdown_file(docs_file)
-st.markdown(text, unsafe_allow_html=True)
+# text = read_markdown_file(docs_file)
+# st.markdown(text, unsafe_allow_html=True)
+
+
 
 
 
