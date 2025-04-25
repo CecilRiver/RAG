@@ -91,9 +91,7 @@ class VectorStoreManager:
         if self.vector_store_type == "pinecone":
             if self.embedding_type != "openai":
                 raise ValueError("Pinecone vector store only supports OpenAI embeddings.")
-            print(os.getenv("OPENAI_API_KEY"))
-            # openai_api_key = os.getenv("OPENAI_API_KEY") or getpass("Enter your OpenAI API Key: ")
-            openai_api_key="sk-IAJU4HVFoab6msNQIgCW1lU716arBT7LW8iCTFAwRm9lqB7t"
+            openai_api_key = os.getenv("OPENAI_API_KEY")
             self.embeddings = OpenAIEmbeddings(
                 model="text-embedding-ada-002",  # You can make this configurable
                 # disallowed_search=(),
@@ -101,8 +99,7 @@ class VectorStoreManager:
             )
         elif self.vector_store_type == "chroma":
             if self.embedding_type == "openai":
-                # openai_api_key = os.getenv("OPENAI_API_KEY") or getpass("Enter your OpenAI API Key: ")
-                openai_api_key="sk-IAJU4HVFoab6msNQIgCW1lU716arBT7LW8iCTFAwRm9lqB7t"
+                openai_api_key = os.getenv("OPENAI_API_KEY")
                 self.embeddings = OpenAIEmbeddings(
                     model="text-embedding-ada-002",  # You can make this configurable
                     # disallowed_search=(),

@@ -18,7 +18,7 @@
 
 # client = OpenAI(
 #     base_url='https://api.openai-proxy.org/v1',
-#     api_key='sk-IAJU4HVFoab6msNQIgCW1lU716arBT7LW8iCTFAwRm9lqB7t',
+#     api_key='YOUR_OPENAI_API_KEY',
 # )
 
 
